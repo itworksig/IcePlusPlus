@@ -66,6 +66,32 @@ struct GitHubRelease: Decodable, Sendable {
     let prerelease: Bool
     let draft: Bool
 
+    /// Release that uses the stable download names when the API is unavailable.
+    static func standardDownloads(tag: String) -> GitHubRelease? {
+        guard ReleaseVersion(tag) != nil else {
+            return nil
+        }
+        let encoded = tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tag
+        let root = "https://github.com/\(GitHubUpdates.owner)/\(GitHubUpdates.repo)"
+        guard
+            let page = URL(string: "\(root)/releases/tag/\(encoded)"),
+            let zip = URL(string: "\(root)/releases/download/\(encoded)/\(GitHubUpdates.zipAssetName)"),
+            let dmg = URL(string: "\(root)/releases/download/\(encoded)/\(GitHubUpdates.dmgAssetName)")
+        else {
+            return nil
+        }
+        return GitHubRelease(
+            tagName: tag,
+            htmlURL: page,
+            assets: [
+                Asset(name: GitHubUpdates.zipAssetName, browserDownloadURL: zip, size: 0),
+                Asset(name: GitHubUpdates.dmgAssetName, browserDownloadURL: dmg, size: 0),
+            ],
+            prerelease: false,
+            draft: false
+        )
+    }
+
     struct Asset: Decodable, Sendable {
         let name: String
         let browserDownloadURL: URL
@@ -136,7 +162,19 @@ enum GitHubUpdates {
     static let dmgAssetName = "Ice-arm64.dmg"
 
     /// Latest non-draft release, or `UpdateFailure.noRelease` when the repo has none.
+    ///
+    /// `api.github.com` allows 60 unauthenticated calls per hour for the whole
+    /// network. A 403 or 429 falls through to the public releases page, which
+    /// is not on that quota, and then uses the known `Ice.zip` download URL.
     static func latest() async throws -> GitHubRelease {
+        do {
+            return try await latestFromAPI()
+        } catch UpdateFailure.badResponse(let code) where code == 403 || code == 429 {
+            return try await latestFromWebsite()
+        }
+    }
+
+    private static func latestFromAPI() async throws -> GitHubRelease {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "api.github.com"
@@ -159,6 +197,37 @@ enum GitHubUpdates {
         }
         let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
         if release.draft || release.prerelease {
+            throw UpdateFailure.noRelease
+        }
+        return release
+    }
+
+    /// `https://github.com/.../releases/latest` redirects to `/releases/tag/vX.Y.Z`.
+    private static func latestFromWebsite() async throws -> GitHubRelease {
+        guard let url = URL(string: "https://github.com/\(owner)/\(repo)/releases/latest") else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("IcePlusPlus", forHTTPHeaderField: "User-Agent")
+        let redirect = ReleaseRedirectStop()
+        let session = URLSession(configuration: .ephemeral, delegate: redirect, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        if http.statusCode == 404 {
+            throw UpdateFailure.noRelease
+        }
+        guard let tagURL = redirect.location ?? http.url else {
+            throw UpdateFailure.badResponse(http.statusCode)
+        }
+        let parts = tagURL.path.split(separator: "/").map(String.init)
+        guard parts.count >= 2, parts[parts.count - 2] == "tag" else {
+            throw UpdateFailure.noRelease
+        }
+        let tag = parts[parts.count - 1].removingPercentEncoding ?? parts[parts.count - 1]
+        guard let release = GitHubRelease.standardDownloads(tag: tag) else {
             throw UpdateFailure.noRelease
         }
         return release
@@ -429,6 +498,31 @@ enum GitHubUpdates {
     }
 }
 
+/// Stops the first redirect so a release check can read the tag without the API.
+private final class ReleaseRedirectStop: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: URL?
+
+    var location: URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        lock.lock()
+        stored = request.url
+        lock.unlock()
+        completionHandler(nil)
+    }
+}
+
 #if DEBUG
 enum ReleaseVersionTests {
     static func run() {
@@ -459,6 +553,14 @@ enum ReleaseVersionTests {
         }
         precondition(release.tagName == "v27.0.2")
         precondition(GitHubUpdates.preferredAsset(in: release)?.name == "Ice.zip")
+
+        let made = GitHubRelease.standardDownloads(tag: "v27.0.2")
+        precondition(made?.tagName == "v27.0.2")
+        precondition(
+            GitHubUpdates.preferredAsset(in: made!)?.browserDownloadURL.absoluteString
+                == "https://github.com/itworksig/IcePlusPlus/releases/download/v27.0.2/Ice.zip"
+        )
+        precondition(GitHubRelease.standardDownloads(tag: "nope") == nil)
     }
 }
 #endif

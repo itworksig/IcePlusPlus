@@ -33,7 +33,7 @@ xattr -d com.apple.quarantine /Applications/Ice.app
 关于页的「检查更新」不读 Sparkle 的 appcast。它直接看这个仓库的最新 Release。
 
 1. 读取正在运行的应用的 `CFBundleShortVersionString`。
-2. 请求 `https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest`。
+2. 请求 `https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest`。这个接口未登录时全网每小时只有 60 次。返回 403 或 429 时，改看 `https://github.com/itworksig/IcePlusPlus/releases/latest` 跳到的版本标签，并下载 `Ice.zip`。
 3. 把 Release 标签 `vX.Y.Z` 和本机版本按数字比较。`v` 前缀和 `-beta` 这类后缀不参与比较。`1.0` 和 `1.0.0` 视为同一版本。
 4. 远程版本更高，才算有新版。相等或更低，提示已是最新。仓库还没有任何 Release 时，提示还没有已发布的版本。
 5. 选择「安装并重新打开」后，下载 `Ice.zip`（没有 zip 时用 `Ice-arm64.dmg`），确认里面的应用标识是 `com.jordanbaird.Ice`、版本更高、并且是 arm64，然后换掉当前正在运行的这份应用并重新打开。
