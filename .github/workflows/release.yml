@@ -5,7 +5,7 @@ name: Release Apple silicon
 # https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
