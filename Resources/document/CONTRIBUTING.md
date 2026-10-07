@@ -26,12 +26,12 @@ cd IcePlusPlus
 Other helpers live in [script/README.md](../script/README.md):
 
 - `./script/build.sh [vX.Y.Z]` — Build Release DMG into `release/`
-- `./script/release.sh` / `./script/update-appcast.sh` — maintainers only, for releases
+- Pushing to `main` publishes the next patch release. Do not tag versions by hand.
 
 ## Project layout
 
 - `Ice/` — app source (`MenuBar/`, `Settings/`, `Hotkeys/`, `Updates/`, `UI/`, `Utilities/`, …)
-- `Ice.xcodeproj/` — Xcode project (version is injected from the git tag in CI, don't edit by hand)
+- `Ice.xcodeproj/` — Xcode project. CI bumps `MARKETING_VERSION` by one patch on each push to `main` and commits it back. Don't edit that number to cut a release.
 - `script/` — dev and release helpers
 - `Resources/` — demo images/video used by README
 - `.github/workflows/` — `lint.yml` (SwiftLint `--strict`), `release.yml`

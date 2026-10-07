@@ -44,16 +44,13 @@ xattr -d com.apple.quarantine /Applications/Ice.app
 
 ## 怎么打出一个新版本
 
-检查更新只能看到 **已经发布** 的版本。推送一个高于用户已安装版本的标签后，[Release 工作流](.github/workflows/release.yml) 才会在 `macos-26` 的 Apple 芯片 runner 上编译并上传安装包。
+每次推送到 `main`，[Release 工作流](.github/workflows/release.yml) 都会把小版本加一，并发布这个构建。它比较项目里的 `MARKETING_VERSION` 和 GitHub 上最新的 Release，取较高的那个，只把最后一位加一。仓库里现在是 27.0.1、还没有 Release，所以下一次成功的推送会发布 **27.0.2**。再推一次就是 27.0.3。
 
-```bash
-git tag v27.0.2
-git push origin v27.0.2
-```
+不需要自己打 `vX.Y.Z` 标签。工作流在 `macos-26` 的 Apple 芯片 runner 上编译，把应用版本设成这个新号，上传 `Ice.zip`、`Ice-arm64.dmg` 和 `release.json`。构建号从 1117 往上加。发布完成后，它把新版本号写回项目。这次写回带有 `[skip ci]`，不会再打包一次。
 
-标签必须是 `vX.Y.Z`。工作流用标签作为 `MARKETING_VERSION`，构建号从 1117 往上加。产物是 arm64 的 `Ice.app`，打成 `Ice.zip` 和 `Ice-arm64.dmg`。
+在 Actions 页手动运行 **Release Apple silicon** 也会再发一个小版本。
 
-也可以在 GitHub 的 Actions 页手动运行 **Release Apple silicon**，填同一个格式的标签。
+这个仓库是 fork，GitHub 默认不会运行它的 Actions。先打开 [Actions](https://github.com/itworksig/IcePlusPlus/actions) 并启用。启用之前的推送不会补跑，启用后再推一次 `main` 才会打出安装包。
 
 ## 本地开发
 

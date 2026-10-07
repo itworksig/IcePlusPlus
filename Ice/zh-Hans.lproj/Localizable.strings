@@ -234,3 +234,10 @@
 "GitHub returned an unexpected response (%@)." = "GitHub 返回了异常响应（%@）。";
 "The published build is not an Apple silicon app." = "发布的安装包不是 Apple 芯片版本。";
 "The download is not an Ice app." = "下载的内容不是 Ice 应用。";
+"Ice++ hides menu bar items and opens them again in the Ice Bar." = "Ice++ 用来隐藏菜单栏图标，并在 Ice Bar 里再打开它们。";
+"Releases are built for Apple silicon and published on GitHub as Ice-arm64.dmg and Ice.zip." = "安装包面向 Apple 芯片，发布在 GitHub 上，文件是 Ice-arm64.dmg 和 Ice.zip。";
+"Updates" = "更新";
+"Check for Updates compares this copy with the latest GitHub release. Only a higher version is offered." = "检查更新会把这个副本和 GitHub 上的最新发布比较。只有版本更高时才会提示更新。";
+"Project" = "项目";
+"GitHub Repository" = "GitHub 仓库";
+"Latest Release" = "最新发布";

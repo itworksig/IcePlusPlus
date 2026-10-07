@@ -1,27 +1,10 @@
 #!/bin/bash
-# Tag + push to trigger CI (CI builds Ice.zip and Ice-arm64.dmg on the GitHub Release).
-# Usage: ./script/release.sh vX.Y.Z   (e.g. ./script/release.sh v27.0.2)
-# The app compares that tag with its installed version. No appcast step.
+# Version tags are no longer created by hand.
+# Pushing to main bumps the patch version and publishes Ice.zip and Ice-arm64.dmg.
 set -e
 cd "$(dirname "$0")/.."
 
-TAG="${1:-}"
-if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "usage: $0 vX.Y.Z   (e.g. $0 v0.11.13)"
-  exit 1
-fi
-if git rev-parse "$TAG" >/dev/null 2>&1; then
-  echo "tag '$TAG' already exists"
-  exit 1
-fi
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "working tree dirty — commit or stash first"
-  exit 1
-fi
-
-./script/ci-local.sh "$TAG"
-
-git tag "$TAG"
-git push origin "$TAG"
-echo "pushed $TAG — CI builds Ice.zip and Ice-arm64.dmg onto the release."
-echo "Ice++ treats the release as an update when the tag is newer than the installed version."
+echo "Do not tag a release from this script."
+echo "Push to main. GitHub Actions raises the patch number (27.0.1 -> 27.0.2),"
+echo "builds the Apple silicon app, and uploads Ice.zip and Ice-arm64.dmg."
+exit 1

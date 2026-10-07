@@ -28,20 +28,13 @@ Ad-hoc signed builds are pinned to a `cdhash` that changes with every build, so 
 
 ## Every release
 
-Check for Updates compares the installed version with the latest GitHub release tag. The tag has to be `vX.Y.Z` and newer than the running app. CI builds an Apple silicon `Ice.app` (in `Ice.zip`) and `Ice-arm64.dmg` and attaches both to that release.
+Push to `main`. The Release Apple silicon workflow raises the patch number itself. It takes the higher of `MARKETING_VERSION` in the Xcode project and the latest GitHub release, then adds one to the last component (27.0.1 becomes 27.0.2). CI builds an Apple silicon `Ice.app`, uploads `Ice.zip` and `Ice-arm64.dmg`, and commits the new `MARKETING_VERSION` with `[skip ci]` so that bookkeeping push does not publish another build.
 
-```bash
-# Commit your code, then create + push the tag (version comes from the tag name)
-./script/release.sh vX.Y.Z
-```
+Do not create the version tag by hand, and do not run `./script/release.sh`. A tag push does not start this workflow.
 
-When the workflow is green, the release page should list `Ice.zip`, `Ice-arm64.dmg`, and `release.json`. Installed copies then offer that version from Settings → About → Check for Updates.
+When the workflow is green, the release page should list `Ice.zip`, `Ice-arm64.dmg`, and `release.json`. Installed copies then offer that version from Settings → About → Check for Updates. An equal or older release is not offered.
 
-## Tag rules
-
-* Format `vX.Y.Z` (e.g. `v27.0.2`) and **greater** than the version already installed. An equal or older tag is not offered.
-* Never re-tag an old number. No need to touch the version in Xcode — CI injects `MARKETING_VERSION` from the tag name.
-* `release.sh` refuses a dirty tree — commit + push first.
+This repository is a fork. GitHub Actions stay off until they are enabled at https://github.com/itworksig/IcePlusPlus/actions. A push made before that click does not run later by itself.
 
 ## No update showing? Check
 

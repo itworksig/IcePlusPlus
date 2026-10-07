@@ -1,25 +1,42 @@
 name: Release Apple silicon
 
-# Pushes of vX.Y.Z build an arm64 Ice.app and attach Ice.zip plus
-# Ice-arm64.dmg to that GitHub release. The app compares its version with
+# A push to main raises the patch version (27.0.1 -> 27.0.2), builds an
+# arm64 Ice.app, and publishes Ice.zip plus Ice-arm64.dmg. The app compares
+# its version with
 # https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest
+#
+# The job then commits that version back to MARKETING_VERSION with
+# "[skip ci]". Pushes made with GITHUB_TOKEN also do not start a new run,
+# so the bookkeeping commit does not publish a second release. Tags are not
+# a trigger: the release tag is created here, and listening for it would
+# bump the version again.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "发布标签，例如 v27.0.2。必须高于已安装版本。"
-        required: true
-        type: string
+
+concurrency:
+  group: release-apple-silicon
+  cancel-in-progress: false
+
 permissions:
   contents: write
+
 jobs:
   release:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+        github.actor != 'github-actions[bot]'
+        && !contains(github.event.head_commit.message, '[skip ci]')
+        && !contains(github.event.head_commit.message, '[ci skip]')
+      )
     # Building with the macOS 26 SDK or newer. macos-26 runners are arm64.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Select Xcode
         run: |
           set -euo pipefail
@@ -37,24 +54,64 @@ jobs:
           sudo xcode-select -s "$XCODE"
           xcodebuild -version
           echo "macOS SDK: $(xcrun --show-sdk-version --sdk macosx)"
-      - name: Derive version from tag
+      - name: Bump patch version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          VERSION="${TAG#v}"
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '$TAG' must look like vX.Y.Z (e.g. v27.0.2)"
+          set -euo pipefail
+
+          # $1 >= $2, both X.Y.Z
+          version_ge() {
+            IFS=. read -r a1 a2 a3 <<< "$1"
+            IFS=. read -r b1 b2 b3 <<< "$2"
+            if [ "$a1" -ne "$b1" ]; then [ "$a1" -gt "$b1" ]; return; fi
+            if [ "$a2" -ne "$b2" ]; then [ "$a2" -gt "$b2" ]; return; fi
+            [ "$a3" -ge "$b3" ]
+          }
+
+          FILE="Ice.xcodeproj/project.pbxproj"
+          FILE_VERSION=$(grep -E 'MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+;' "$FILE" | head -1 | sed -E 's/.*MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+);/\1/')
+          if ! [[ "$FILE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not read MARKETING_VERSION from $FILE (got '${FILE_VERSION:-}')"
             exit 1
           fi
+          echo "Project version: $FILE_VERSION"
+          BASE="$FILE_VERSION"
+
+          HTTP=$(curl -sS -o /tmp/latest-release.json -w "%{http_code}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")
+          if [ "$HTTP" = "200" ]; then
+            REL=$(jq -r '.tag_name // empty' /tmp/latest-release.json)
+            REL="${REL#v}"
+            REL="${REL%%-*}"
+            if [[ "$REL" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Latest release: $REL"
+              if version_ge "$REL" "$BASE"; then
+                BASE="$REL"
+              fi
+            else
+              echo "Latest release tag is not X.Y.Z: ${REL:-<empty>}"
+              exit 1
+            fi
+          elif [ "$HTTP" = "404" ]; then
+            echo "No GitHub release yet. Starting from the project version."
+          else
+            echo "GitHub releases API returned HTTP $HTTP"
+            cat /tmp/latest-release.json
+            exit 1
+          fi
+
+          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+          VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
           # Sparkle requires the build number to keep increasing and it must
           # stay above 1117 (the last build released upstream).
           BUILD_NUMBER=$((1117 + GITHUB_RUN_NUMBER))
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
-          echo "Building version $VERSION ($BUILD_NUMBER)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "Publishing version $VERSION ($BUILD_NUMBER), previous was $BASE"
       - name: Build app
         run: |
           xcodebuild -project Ice.xcodeproj -scheme Ice -configuration Release \
@@ -67,8 +124,8 @@ jobs:
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             -showBuildSettings 2>/dev/null \
             | sed -n 's/^ *BUILT_PRODUCTS_DIR *= *//p' | head -1)
-          echo "APP_PATH=$BUILD_DIR/Ice.app" >> $GITHUB_ENV
-          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "APP_PATH=$BUILD_DIR/Ice.app" >> "$GITHUB_ENV"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
       - name: Package Apple silicon zip and disk image
         run: |
           set -euo pipefail
@@ -95,11 +152,58 @@ jobs:
           }
           EOF
           echo "Packaged Ice.zip and Ice-arm64.dmg for $VERSION ($BUILD_NUMBER)"
+      - name: Replace an empty tag so this commit owns the version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          CODE=$(curl -sS -o /tmp/tag-release.json -w "%{http_code}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}")
+          if [ "$CODE" = "200" ]; then
+            echo "Release ${TAG} already exists. Refusing to replace its files."
+            exit 1
+          fi
+          if [ "$CODE" != "404" ]; then
+            echo "Unexpected HTTP ${CODE} while looking up ${TAG}"
+            cat /tmp/tag-release.json
+            exit 1
+          fi
+          if git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"; then
+            echo "Deleting empty tag ${TAG} so the release points at this commit"
+            git push origin ":refs/tags/${TAG}"
+          else
+            echo "Tag ${TAG} does not exist yet"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           files: |
             Ice.zip
             Ice-arm64.dmg
             release.json
           generate_release_notes: true
+      - name: Record the new version on main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          perl -i -pe "s/MARKETING_VERSION = \\d+\\.\\d+\\.\\d+;/MARKETING_VERSION = ${VERSION};/g" Ice.xcodeproj/project.pbxproj
+          COUNT=$(grep -c "MARKETING_VERSION = ${VERSION};" Ice.xcodeproj/project.pbxproj || true)
+          if [ "$COUNT" -lt 1 ]; then
+            echo "MARKETING_VERSION was not updated to ${VERSION}"
+            exit 1
+          fi
+          if git diff --quiet -- Ice.xcodeproj/project.pbxproj; then
+            echo "main already records ${VERSION}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Ice.xcodeproj/project.pbxproj
+          git commit -m "chore: set version to ${VERSION} [skip ci]"
+          git push origin HEAD:main
