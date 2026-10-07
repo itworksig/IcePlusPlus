@@ -1,179 +1,64 @@
 <div align="center">
-    <img src="Ice/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width=200 height=200>
-    <h1>Ice++ — Free & Open-Source Menu Bar Manager for macOS</h1>
-    <p>Hide and organize menu bar icons on your Mac. The best <strong>free Bartender alternative</strong> — also a great <strong>Hidden Bar</strong> and <strong>Vanilla alternative</strong> — focused on stability and a smooth, distraction-free experience.<br>✅ <strong>Fully supports macOS 27</strong></p>
+    <img src="Ice/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="160" height="160" alt="Ice++">
+    <h1>Ice++</h1>
+    <p>macOS 菜单栏管理。隐藏图标、Ice Bar、中文界面。只提供 Apple 芯片（M 系列）安装包。</p>
 </div>
 
-![Ice menu bar manager for macOS — hide and organize menu bar icons](./Resources/Image/banner.png)
+[![Release](https://github.com/itworksig/IcePlusPlus/actions/workflows/release.yml/badge.svg)](https://github.com/itworksig/IcePlusPlus/actions/workflows/release.yml)
+[![Download](https://img.shields.io/badge/download-Apple%20silicon-brightgreen?style=flat-square)](https://github.com/itworksig/IcePlusPlus/releases/latest)
+![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20arm64-blue?style=flat-square)
 
-<div align="center">
+基于 [Jordan Baird 的 Ice](https://github.com/jordanbaird/Ice)。本仓库是 [itworksig/IcePlusPlus](https://github.com/itworksig/IcePlusPlus)。界面名称是 Ice++，包标识仍是 `com.jordanbaird.Ice`。
 
-[![Download](https://img.shields.io/badge/download-latest-brightgreen?style=flat-square)](https://github.com/itworksig/IcePlusPlus/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/itworksig/IcePlusPlus/total?style=flat-square)](https://github.com/itworksig/IcePlusPlus/releases)
-![Platform](https://img.shields.io/badge/platform-macOS-blue?style=flat-square)
-![Requirements](https://img.shields.io/badge/requirements-macOS%2014%2B-fa4e49?style=flat-square)
-![macOS 27](https://img.shields.io/badge/macOS_27-fully_supported-brightgreen?style=flat-square)
-[![GitHub stars](https://img.shields.io/github/stars/itworksig/IcePlusPlus?style=flat-square)](https://github.com/itworksig/IcePlusPlus/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/itworksig/IcePlusPlus?style=flat-square)](https://github.com/itworksig/IcePlusPlus/network/members)
-[![GitHub](https://img.shields.io/badge/GitHub-itworksig%2FIcePlusPlus-015FBA?style=flat-square)](https://github.com/itworksig/IcePlusPlus)
-[![License](https://img.shields.io/github/license/itworksig/IcePlusPlus?style=flat-square)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/Sponsor%20%E2%9D%A4%EF%B8%8F-8A2BE2?style=flat-square)](https://github.com/itworksig/IcePlusPlus)
+## 安装
 
-</div>
+到 [Releases](https://github.com/itworksig/IcePlusPlus/releases/latest) 下载：
 
-> [!NOTE]
-> Ice++ is in active development. Grab the latest build from the [releases page](https://github.com/itworksig/IcePlusPlus/releases/latest).
+| 文件 | 用途 |
+| --- | --- |
+| `Ice-arm64.dmg` | 手动安装。打开后把 `Ice.app` 拖进“应用程序”。 |
+| `Ice.zip` | 同一个 arm64 应用。应用里的「检查更新」用这个包替换当前副本。 |
+| `release.json` | 这次构建的版本号、构建号和芯片架构。 |
 
-> [!TIP]
-> ✅ **Fully supports macOS 27** — tested and ready for the latest macOS, all the way back to macOS 14 Sonoma.
-
-## Install
-
-1. Download `Ice.zip` from the [latest release](https://github.com/itworksig/IcePlusPlus/releases/latest).
-2. Unzip it and move `Ice.app` into `/Applications`.
-3. Clear the quarantine flag — releases are ad-hoc signed and not notarized, so Gatekeeper would otherwise block the first launch:
+系统要求是 macOS 14 或更高，Apple 芯片。安装包没有做公证。第一次打开若被拦截，在终端执行：
 
 ```bash
 xattr -d com.apple.quarantine /Applications/Ice.app
 ```
 
-Then open Ice++ and grant **Accessibility** and **Screen Recording** in System Settings (see [Permissions](#permissions)).
+然后在「系统设置 → 隐私与安全性」里打开辅助功能和屏幕录制。
 
-For local development, see [script/README.md](script/README.md).
+## 检查更新
 
-## Uninstall
+关于页的「检查更新」不读 Sparkle 的 appcast。它直接看这个仓库的最新 Release。
 
-Quit Ice++, then drag `Ice.app` out of `/Applications` to the Trash. To also remove preferences, delete `~/Library/Preferences/com.jordanbaird.Ice.plist`.
+1. 读取正在运行的应用的 `CFBundleShortVersionString`。
+2. 请求 `https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest`。
+3. 把 Release 标签 `vX.Y.Z` 和本机版本按数字比较。`v` 前缀和 `-beta` 这类后缀不参与比较。`1.0` 和 `1.0.0` 视为同一版本。
+4. 远程版本更高，才算有新版。相等或更低，提示已是最新。仓库还没有任何 Release 时，提示还没有已发布的版本。
+5. 选择「安装并重新打开」后，下载 `Ice.zip`（没有 zip 时用 `Ice-arm64.dmg`），确认里面的应用标识是 `com.jordanbaird.Ice`、版本更高、并且是 arm64，然后换掉当前正在运行的这份应用并重新打开。
 
-## Why Ice++?
+「自动检查更新」打开时，启动后会查一次，之后大约每 24 小时查一次。没有新版本时不弹窗。「自动下载更新」打开时，发现新版本会先下载，再询问是否安装。不会在你没确认的情况下退出菜单栏。
 
-Too many menu bar icons? On small MacBook screens — especially models with the notch — the menu bar fills up fast and icons get hidden behind the camera housing.
+这台 Mac 上如果有 **Ice Dev** 证书，安装脚本会用它重新签名，已授予的辅助功能可以继续匹配。从 GitHub 直接下载的包是临时签名，第一次换上这份包时，辅助功能可能需要重新打开一次。
 
-Ice lets you **hide menu bar icons on Mac, organize them into sections, and reveal them when you need them**. It is a **free and open-source Bartender alternative for macOS**, and a drop-in replacement if you are coming from **Hidden Bar, Vanilla, Dozer, or BarBee**.
+## 怎么打出一个新版本
 
-| | Ice++ (this app) | Bartender 5 | Hidden Bar | Vanilla |
-|---|---|---|---|---|
-| Price | **Free, open-source (GPL-3.0)** | ~$16 paid | Free, open-source | Free / Pro paid |
-| Hide & show menu bar icons | ✅ | ✅ | ✅ | ✅ |
-| Always-hidden section | ✅ | ✅ | ❌ | ❌ |
-| Second menu bar (Ice Bar) for notched Macs | ✅ | ✅ (Bartender Bar) | ❌ | ❌ |
-| Menu bar themes (tint, border, shape) | ✅ | ✅ | ❌ | ❌ |
-| Hotkeys | ✅ | ✅ | Limited | Pro only |
-| macOS 27 support | ✅ **fully supported, tested** | ✅ | ⚠️ unmaintained | ✅ |
-
-## Gallery
-
-**Always-Hidden section demo — hide menu bar icons and reveal on hover**
-
-![Demo of Ice always-hidden menu bar section on macOS](Resources/vid/demo-ah.gif)
-
-**Show and hide menu bar icons demo**
-
-![Demo showing and hiding Mac menu bar icons with Ice](Resources/vid/demo.gif)
-
-**Fullscreen settings**
-
-![Ice fullscreen settings window on macOS](Resources/Image/fullscreen.png)
-
-
-| Ice Bar — second menu bar for notched MacBooks                                                   | Drag-and-drop menu bar layout                                                                   |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| ![Ice Bar second menu bar for MacBook notch](https://github.com/user-attachments/assets/f1429589-6186-4e1b-8aef-592219d49b9b) | ![Drag and drop menu bar layout editor](./Resources/Image/MenuBarLayout.png) |
-
-| Menu bar appearance and theme settings                                                                  | Menu bar item spacing                                                                                       |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| ![Menu bar appearance theme settings](./Resources/Image/MenuBarAppearance.png) | ![Menu bar icon spacing settings](https://github.com/user-attachments/assets/b196aa7e-184a-4d4c-b040-502f4aae40a6) |
-
-## Permissions
-
-Ice needs two grants in **System Settings > Privacy & Security**:
-
-* **Accessibility** — hiding and moving menu bar items
-* **Screen Recording** — menu bar item images and the Ice Bar
-
-> [!IMPORTANT]
-> **After every update you will need to grant these again.**
->
-> Releases are ad-hoc signed, so the app's designated requirement is a pinned
-> `cdhash` instead of a stable Developer ID. Each build has a different hash, so
-> the requirement macOS recorded when you first granted access no longer matches
-> the new binary. The symptom is confusing: System Settings still shows the
-> toggle **on** while Ice behaves as though it were denied.
->
-> The stale entries have to be cleared before the grant can be re-recorded:
->
-> ```bash
-> ./script/fix-permissions.sh
-> ```
->
-> Or by hand: quit Ice, run `tccutil reset Accessibility com.jordanbaird.Ice`
-> and `tccutil reset ScreenCapture com.jordanbaird.Ice`, relaunch, re-grant.
-
-Because the builds are ad-hoc signed rather than notarized, Gatekeeper may also refuse the first launch. Right-click the app and choose **Open**, or clear the quarantine flag:
+检查更新只能看到 **已经发布** 的版本。推送一个高于用户已安装版本的标签后，[Release 工作流](.github/workflows/release.yml) 才会在 `macos-26` 的 Apple 芯片 runner 上编译并上传安装包。
 
 ```bash
-xattr -d com.apple.quarantine /Applications/Ice.app
+git tag v27.0.2
+git push origin v27.0.2
 ```
 
-## Features
+标签必须是 `vX.Y.Z`。工作流用标签作为 `MARKETING_VERSION`，构建号从 1117 往上加。产物是 arm64 的 `Ice.app`，打成 `Ice.zip` 和 `Ice-arm64.dmg`。
 
-**Hide and organize menu bar icons**
-Hide items individually or all at once, with an optional "always-hidden" section. Reveal hidden items by hovering, clicking an empty area, or scrolling — with auto-rehide, drag-and-drop reordering, and a separate Ice Bar for notched MacBooks.
+也可以在 GitHub 的 Actions 页手动运行 **Release Apple silicon**，填同一个格式的标签。
 
-**Ice Bar — a second menu bar for notched Macs**
-On MacBooks with a camera notch, icons hidden behind the notch become unreachable. The Ice Bar gives hidden icons their own full-width menu bar below, so nothing is ever lost.
+## 本地开发
 
-**Menu bar appearance and themes**
-Custom menu bar tint (solid or gradient), shadow, border, and shape (rounded and/or split).
+本机没有 Xcode.app 时，用 Command Line Tools 的 MacOSX SDK 编调试版，装到 `/Applications/Ice-Dev.app`，并用 Ice Dev 证书签名，这样不用每次重新授权。步骤见 [script/README.md](script/README.md)。
 
-**Hotkeys**
-Toggle hidden sections, the Ice Bar, divider icons, and application menus from the keyboard.
+## 许可
 
-**Lightweight and private**
-Launch at login, automatic updates. No account, no telemetry, no subscription — your settings stay on your Mac.
-
-> ✅ **macOS 27 fully supported** — works on macOS 14 Sonoma and later, including Sequoia, Tahoe, and macOS 27. If you need a similar tool for macOS 13 Ventura or earlier, check out [Ice 0.11.x](https://github.com/jordanbaird/Ice/releases).
-
-## Project Philosophy
-
-Ice is built with a focus on **stability, performance, and a smooth user experience**.
-
-Rather than adding features for the sake of having more features, the project prioritizes a small, focused, and reliable feature set. Every feature should have a clear purpose, integrate naturally with macOS, and maintain Ice's simplicity and performance.
-
-Our goal is to make Ice feel fast, predictable, and unobtrusive — a tool that quietly does its job without unnecessary complexity. Ice will always remain **open-source** and **free**.
-
-## Contributing
-
-Contributions are welcome! Please read the [contribution guidelines](./Resources/document/CONTRIBUTING.md) before submitting a pull request.
-
-## Support
-
-[Sponsor Ice++ on GitHub](https://github.com/itworksig/IcePlusPlus)
-
-## Acknowledgments
-
-A fork of [Ice](https://github.com/jordanbaird/Ice) by [Jordan Baird](https://github.com/jordanbaird) — huge thanks for the original work this project builds on.
-
-## FAQ
-
-**Is Ice free?**
-Yes — free and open-source (GPL-3.0), no Pro tier or subscription.
-
-**Is it a good Bartender / Hidden Bar / Vanilla replacement?**
-Yes — hide/show icons, always-hidden section, Ice Bar for the notch, hotkeys and themes, free and actively maintained.
-
-**How do I hide menu bar icons?**
-Drag icons between Visible / Hidden / Always-Hidden in Menu Bar Layout, or right-click any icon. Hover or hotkey to reveal.
-
-**Which macOS versions are supported?**
-macOS 14 Sonoma and later — with **full, tested support for macOS 27**, plus Sequoia and Tahoe. For macOS 13 or earlier, use [Ice 0.11.x](https://github.com/jordanbaird/Ice/releases).
-
-## License
-
-[GPL-3.0](LICENSE) — Ice is and will always remain open-source and free.
-
-## Star History
-
-<a href="https://star-history.com/#itworksig/IcePlusPlus&Date">
-    <img src="https://api.star-history.com/svg?repos=itworksig/IcePlusPlus&type=Date" alt="Star History Chart" width="500">
-</a>
+[GPL-3.0](LICENSE)。

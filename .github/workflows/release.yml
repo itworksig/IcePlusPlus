@@ -1,29 +1,36 @@
-name: Release
+name: Release Apple silicon
+
+# Pushes of vX.Y.Z build an arm64 Ice.app and attach Ice.zip plus
+# Ice-arm64.dmg to that GitHub release. The app compares its version with
+# https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "发布标签，例如 v27.0.2。必须高于已安装版本。"
+        required: true
+        type: string
 permissions:
   contents: write
 jobs:
   release:
-    # Liquid Glass is gated on the link SDK, not the run-time OS: building
-    # with Xcode <=16 keeps the legacy appearance even on Tahoe, so CI must
-    # build with the Xcode 26+ SDK like local builds do. macos-14 runners
-    # (Xcode 16 max) are deprecated.
+    # Building with the macOS 26 SDK or newer. macos-26 runners are arm64.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode 26 SDK
+      - name: Select Xcode
         run: |
+          set -euo pipefail
           ls -d /Applications/Xcode*.app
-          PINNED="/Applications/Xcode_26.6.app"
-          if [ -d "$PINNED" ]; then
-            XCODE="$PINNED"
+          if [ -d "/Applications/Xcode_26.6.app" ]; then
+            XCODE="/Applications/Xcode_26.6.app"
           else
-            XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+            XCODE=$(ls -d /Applications/Xcode_2[6-9]*.app /Applications/Xcode_[3-9][0-9]*.app 2>/dev/null | sort -V | tail -1 || true)
           fi
-          if [ -z "${XCODE:-}" ]; then
-            echo "No Xcode 26+ found on runner"
+          if [ -z "${XCODE:-}" ] || [ ! -d "$XCODE" ]; then
+            echo "No Xcode 26 or newer found on runner"
             exit 1
           fi
           echo "Selecting $XCODE"
@@ -32,10 +39,14 @@ jobs:
           echo "macOS SDK: $(xcrun --show-sdk-version --sdk macosx)"
       - name: Derive version from tag
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
           VERSION="${TAG#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '$TAG' must look like vX.Y.Z (e.g. v0.11.13)"
+            echo "Tag '$TAG' must look like vX.Y.Z (e.g. v27.0.2)"
             exit 1
           fi
           # Sparkle requires the build number to keep increasing and it must
@@ -86,13 +97,9 @@ jobs:
           echo "Packaged Ice.zip and Ice-arm64.dmg for $VERSION ($BUILD_NUMBER)"
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
           files: |
             Ice.zip
             Ice-arm64.dmg
             release.json
           generate_release_notes: true
-# Check for Updates compares CFBundleShortVersionString with the tag on
-# https://github.com/itworksig/IcePlusPlus/releases/latest
-# Asset names must stay Ice.zip and Ice-arm64.dmg (see GitHubUpdates).
-# Ad-hoc signing is for this fork's own installs. A Developer ID signature
-# is what Gatekeeper wants for a public download.
