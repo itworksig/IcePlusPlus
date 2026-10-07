@@ -114,13 +114,18 @@ jobs:
           echo "Publishing version $VERSION ($BUILD_NUMBER), previous was $BASE"
       - name: Build app
         run: |
+          set -euo pipefail
+          # Release leaves ONLY_ACTIVE_ARCH off, so Xcode builds a universal
+          # binary. The package must be Apple silicon only.
           xcodebuild -project Ice.xcodeproj -scheme Ice -configuration Release \
             -destination 'platform=macOS,arch=arm64' \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             clean build
           BUILD_DIR=$(xcodebuild -project Ice.xcodeproj -scheme Ice -configuration Release \
             -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             -showBuildSettings 2>/dev/null \
             | sed -n 's/^ *BUILT_PRODUCTS_DIR *= *//p' | head -1)
@@ -129,6 +134,33 @@ jobs:
       - name: Package Apple silicon zip and disk image
         run: |
           set -euo pipefail
+          thin_macho() {
+            local f="$1"
+            local arches
+            if ! arches=$(lipo -archs "$f" 2>/dev/null); then
+              return 0
+            fi
+            case " $arches " in
+              *" arm64 "*)
+                if [ "$arches" != "arm64" ]; then
+                  echo "Thinning $f ($arches) to arm64"
+                  lipo "$f" -thin arm64 -output "$f.arm64"
+                  mv "$f.arm64" "$f"
+                fi
+                ;;
+              *)
+                echo "No arm64 slice in $f ($arches)"
+                return 1
+                ;;
+            esac
+          }
+          fail=0
+          while IFS= read -r -d '' f; do
+            thin_macho "$f" || fail=1
+          done < <(find "$APP_PATH" -type f -print0)
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
           ARCHES=$(lipo -archs "$APP_PATH/Contents/MacOS/Ice")
           echo "Architectures: $ARCHES"
           if [ "$ARCHES" != "arm64" ]; then
