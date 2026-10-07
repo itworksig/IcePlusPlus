@@ -13,6 +13,8 @@ struct GeneralSettingsPane: View {
     @State private var presentedError: LocalizedErrorWrapper?
     @State private var isApplyingOffset = false
     @State private var isPresentingLogoutPrompt = false
+    @State private var language = AppLanguage.resolved
+    @State private var isPresentingLanguageRestart = false
     @State private var tempItemSpacingOffset: CGFloat = 0 // Temporary state for the slider
 
     private var manager: GeneralSettingsManager {
@@ -89,6 +91,9 @@ struct GeneralSettingsPane: View {
     var body: some View {
         IceForm {
             IceSection {
+                languagePicker
+            }
+            IceSection {
                 launchAtLogin
             }
             IceSection {
@@ -115,6 +120,17 @@ struct GeneralSettingsPane: View {
                 isPresentingError = false
             }
         }
+        .alert("Restart Ice++ to apply the language?", isPresented: $isPresentingLanguageRestart) {
+            Button("Restart Now") {
+                if #available(macOS 27, *) {
+                    appState.menuBarConcealer.releaseAll()
+                }
+                AppLanguage.relaunch()
+            }
+            Button("Later", role: .cancel) { }
+        } message: {
+            Text("Ice++ quits and opens again. The new language is used after it reopens.")
+        }
         .alert("Spacing saved", isPresented: $isPresentingLogoutPrompt) {
             Button("Log Out Now") {
                 logOut()
@@ -126,14 +142,46 @@ struct GeneralSettingsPane: View {
     }
 
     @ViewBuilder
+    private var languagePicker: some View {
+        IcePicker("Language", selection: $language) {
+            ForEach(AppLanguage.allCases) { language in
+                languageLabel(language).tag(language)
+            }
+        }
+        .annotation("Choose English, 简体中文, or the macOS language. Ice++ restarts to apply it.")
+        .onChange(of: language) { _, newValue in
+            guard newValue != AppLanguage.resolved else {
+                return
+            }
+            newValue.apply()
+            isPresentingLanguageRestart = true
+        }
+    }
+
+    @ViewBuilder
+    private func languageLabel(_ language: AppLanguage) -> some View {
+        switch language {
+        case .system:
+            Text("System Default")
+        case .english:
+            Text(verbatim: "English")
+        case .simplifiedChinese:
+            Text(verbatim: "简体中文")
+        }
+    }
+
+    @ViewBuilder
     private var launchAtLogin: some View {
-        LaunchAtLogin.Toggle()
+        // The package default passes a plain String, which skips Localizable.strings.
+        LaunchAtLogin.Toggle {
+            Text("Launch at login")
+        }
     }
 
     @ViewBuilder
     private func menuItem(for imageSet: ControlItemImageSet) -> some View {
         Label {
-            Text(imageSet.name.rawValue)
+            Text(LocalizedStringKey(imageSet.name.rawValue))
         } icon: {
             let image = manager.reverseIceIcon ? imageSet.hidden : imageSet.visible
             if let nsImage = image.nsImage(for: appState) {
@@ -157,7 +205,7 @@ struct GeneralSettingsPane: View {
         Toggle("Show Ice icon", isOn: manager.bindings.showIceIcon)
             .annotation {
                 if !manager.showIceIcon {
-                    Text("You can still access Ice's settings by right-clicking an empty area in the menu bar")
+                    Text("You can still access Ice++'s settings by right-clicking an empty area in the menu bar")
                 }
             }
         if manager.showIceIcon {

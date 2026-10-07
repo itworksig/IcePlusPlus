@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>SUFeedURL</key>
-	<string>https://cavaldos.github.io/ice-releases/appcast.xml</string>
+	<string>https://github.com/itworksig/IcePlusPlus/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>5giXQMfuJxsXCpuCn1XxL2IFkBoSiNMiP4rNwAanT7A=</string>
 	<key>SUEnableAutomaticChecks</key>

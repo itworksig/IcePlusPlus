@@ -68,7 +68,7 @@ struct PermissionsView: View {
             Text("Permissions")
                 .font(.system(size: 36))
         } icon: {
-            if let nsImage = NSImage(named: NSImage.applicationIconName) {
+            if let nsImage = Bundle.main.appIconImage {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFit()
@@ -81,7 +81,7 @@ struct PermissionsView: View {
     private var explanationView: some View {
         IceSection {
             VStack {
-                Text("Ice needs permission to manage the menu bar.")
+                Text("Ice++ needs permission to manage the menu bar.")
                 Text("Absolutely no personal information is collected or stored.")
                     .bold()
                     .foregroundStyle(.red)
@@ -150,12 +150,12 @@ struct PermissionsView: View {
     private func permissionBox(_ permission: Permission) -> some View {
         IceSection {
             VStack(spacing: 10) {
-                Text(permission.title)
+                Text(LocalizedStringKey(permission.title))
                     .font(.title)
                     .underline()
 
                 VStack(spacing: 0) {
-                    Text("Ice needs this to:")
+                    Text("Ice++ needs this to:")
                         .font(.title3)
                         .bold()
 
@@ -163,7 +163,7 @@ struct PermissionsView: View {
                         ForEach(permission.details, id: \.self) { detail in
                             HStack {
                                 Text("•").bold()
-                                Text(detail)
+                                Text(LocalizedStringKey(detail))
                             }
                         }
                     }
@@ -196,7 +196,7 @@ struct PermissionsView: View {
                             font: .callout.bold()
                         ) {
                             Label {
-                                Text("Ice can work in a limited mode without this permission.")
+                                Text("Ice++ can work in a limited mode without this permission.")
                             } icon: {
                                 Image(systemName: "checkmark.shield")
                                     .foregroundStyle(.green)

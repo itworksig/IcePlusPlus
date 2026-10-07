@@ -26,35 +26,25 @@ Install SwiftLint first if needed: `brew install swiftlint`.
 
 Ad-hoc signed builds are pinned to a `cdhash` that changes with every build, so the grant recorded for the previous binary stops matching — System Settings shows the toggle on while the app is denied. See [Permissions](../README.md#permissions).
 
-## Every release (2 commands)
+## Every release
 
-Automated releases so users get Sparkle update notifications — no manual version edits.
+Check for Updates compares the installed version with the latest GitHub release tag. The tag has to be `vX.Y.Z` and newer than the running app. CI builds an Apple silicon `Ice.app` (in `Ice.zip`) and `Ice-arm64.dmg` and attaches both to that release.
 
 ```bash
-# 1. Commit your code, then create + push the tag (lints/builds first, version comes from the tag name)
+# Commit your code, then create + push the tag (version comes from the tag name)
 ./script/release.sh vX.Y.Z
-
-# 2. Wait for CI to go green, then publish the appcast (this is what makes users see the update)
-./script/update-appcast.sh vX.Y.Z
 ```
 
-After step 2, open `https://cavaldos.github.io/ice-releases/appcast.xml` — if the new tag is listed, you're done.
+When the workflow is green, the release page should list `Ice.zip`, `Ice-arm64.dmg`, and `release.json`. Installed copies then offer that version from Settings → About → Check for Updates.
 
 ## Tag rules
 
-* Format `vX.Y.Z` (e.g. `v0.11.14`) and **greater** than the version users have — Sparkle ignores older builds.
+* Format `vX.Y.Z` (e.g. `v27.0.2`) and **greater** than the version already installed. An equal or older tag is not offered.
 * Never re-tag an old number. No need to touch the version in Xcode — CI injects `MARKETING_VERSION` from the tag name.
 * `release.sh` refuses a dirty tree — commit + push first.
 
-## What `update-appcast.sh` needs
-
-* `gh` logged in (`gh auth login`) and the `generate_appcast` tool (from the Sparkle 2.x dist).
-* The private key matching `SUPublicEDKey` in `Ice/Info.plist`: uses the Keychain key by default;
-  pass `--key ~/.sparkle/sparkle-priv.pem` (or export `SPARKLE_PRIVATE_KEY`) if the key lives in a file.
-* First run only: the `cavaldos/ice-releases` repo must exist with GitHub Pages enabled (already done).
-
 ## No update showing? Check
 
-1. Is the new tag in `appcast.xml` (link above)?
-2. Does the user's app have **Automatically check for updates** on (default for fresh installs: on)?
-3. Was the installed app signed with the same key — builds signed with the old upstream key need one manual download.
+1. Does `https://github.com/itworksig/IcePlusPlus/releases/latest` exist, and is its tag newer than the app's version?
+2. Does that release include `Ice.zip` (used to install) or `Ice-arm64.dmg`?
+3. Is **Automatically check for updates** on? The Check for Updates button works either way.

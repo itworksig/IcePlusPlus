@@ -56,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        if #available(macOS 27, *) {
+            appState?.menuBarConcealer.releaseAll()
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Deactivate and set the policy to accessory when all windows are closed.
         appState?.deactivate(withPolicy: .accessory)

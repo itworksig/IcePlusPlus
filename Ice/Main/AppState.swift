@@ -42,6 +42,13 @@ final class AppState: ObservableObject {
     /// Manager for menu bar item spacing.
     let spacingManager = MenuBarItemSpacingManager()
 
+    /// Hides individual apps on macOS 27, where a wide status-item spacer
+    /// pushes every icon off the menu bar.
+    ///
+    /// Stored on every OS. Callers only use it inside `if #available(macOS 27, *)`,
+    /// because a stored property cannot itself be marked unavailable.
+    private(set) lazy var menuBarConcealer = MenuBarConcealer27(appState: self)
+
     /// Model for app-wide navigation.
     let navigationState = AppNavigationState()
 
@@ -212,6 +219,9 @@ final class AppState: ObservableObject {
             permissionsManager.stopTimerChecks()
         }
         menuBarManager.performSetup()
+        if #available(macOS 27, *) {
+            menuBarConcealer.performSetup()
+        }
         appearanceManager.performSetup()
         eventManager.performSetup()
         itemManager.performSetup()

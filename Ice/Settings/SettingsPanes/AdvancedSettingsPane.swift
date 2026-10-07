@@ -86,9 +86,9 @@ struct AdvancedSettingsPane: View {
             Toggle("Always-hidden section can be shown", isOn: manager.bindings.canToggleAlwaysHiddenSection)
                 .annotation {
                     if appState.settingsManager.generalSettingsManager.showOnClick {
-                        Text("Option + click one of Ice's menu bar items, or inside an empty area of the menu bar to show the section")
+                        Text("Option + click one of Ice++'s menu bar items, or inside an empty area of the menu bar to show the section")
                     } else {
-                        Text("Option + click one of Ice's menu bar items to show the section")
+                        Text("Option + click one of Ice++'s menu bar items to show the section")
                     }
                 }
         }
@@ -161,15 +161,17 @@ struct AdvancedSettingsPane: View {
                     }
                 }
             } label: {
-                Text(permission.title)
+                Text(LocalizedStringKey(permission.title))
             }
             .frame(height: 22)
         }
     }
 }
 
+#if !ICE_CLI_BUILD
 #Preview {
     AdvancedSettingsPane()
         .fixedSize()
         .environmentObject(AppState())
 }
+#endif

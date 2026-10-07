@@ -7,6 +7,10 @@ import Cocoa
 
 /// A Codable image for a control item.
 enum ControlItemImage: Codable, Hashable {
+    /// Side of a menu bar glyph, in points. The status bar is 22pt. Neighboring
+    /// status icons are about 16pt tall; the cube artwork does not fill this
+    /// square, so 18pt lands on that height.
+    static let menuBarGlyph: CGFloat = 18
     /// An image created from drawing code built into the app.
     case builtin(_ name: ImageBuiltinName)
     /// A system symbol image.
@@ -28,14 +32,22 @@ enum ControlItemImage: Codable, Hashable {
         case .symbol(let name):
             let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
             image?.isTemplate = true
+            image?.size = CGSize(width: Self.menuBarGlyph, height: Self.menuBarGlyph)
             return image
         case .catalog(let name):
-            guard let originalImage = NSImage(named: name) else {
+            // Read the PNG in the bundle. A named lookup can keep an older
+            // cube from a previous asset catalog.
+            let originalImage = Bundle.main.url(forResource: name, withExtension: "png")
+                .flatMap { NSImage(contentsOf: $0) } ?? NSImage(named: name)
+            guard let originalImage else {
                 return nil
             }
+            // Asset catalogs mark these template. A loose PNG in the app
+            // bundle does not, so a dark menu bar would keep a black glyph.
+            originalImage.isTemplate = true
             let originalWidth = originalImage.size.width
             let originalHeight = originalImage.size.height
-            let ratio = max(originalWidth / 25, originalHeight / 17)
+            let ratio = max(originalWidth / Self.menuBarGlyph, originalHeight / Self.menuBarGlyph)
             let newSize = CGSize(width: originalWidth / ratio, height: originalHeight / ratio)
             return originalImage.resized(to: newSize)
         case .data(let data):

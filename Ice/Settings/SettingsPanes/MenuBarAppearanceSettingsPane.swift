@@ -14,7 +14,9 @@ struct MenuBarAppearanceSettingsPane: View {
     }
 }
 
+#if !ICE_CLI_BUILD
 #Preview {
     MenuBarAppearanceSettingsPane()
         .environmentObject(AppState())
 }
+#endif

@@ -48,11 +48,28 @@ struct MenuBarLayoutSettingsPane: View {
     /// Displayed groups: with "Enable always-hidden section" off in
     /// Advanced, the Always Hidden group stays hidden here too.
     private var visibleMetas: [SectionMeta] {
-        if appState.settingsManager.advancedSettingsManager.enableAlwaysHiddenSection {
-            SectionMeta.all
+        let source: [SectionMeta]
+        if #available(macOS 27, *) {
+            source = SectionMeta.allMacOS27
         } else {
-            SectionMeta.all.filter { $0.kind != .alwaysHidden }
+            source = SectionMeta.all
         }
+        if appState.settingsManager.advancedSettingsManager.enableAlwaysHiddenSection {
+            return source
+        }
+        return source.filter { $0.kind != .alwaysHidden }
+    }
+
+    /// macOS 27 still lists items through Accessibility. The "unavailable"
+    /// explanation is for older builds where that fallback did not exist.
+    private var showsDiscoveryUnavailable: Bool {
+        guard appState.itemManager.isItemDiscoveryUnavailable else {
+            return false
+        }
+        if #available(macOS 27, *) {
+            return false
+        }
+        return true
     }
 
     var body: some View {
@@ -90,7 +107,7 @@ struct MenuBarLayoutSettingsPane: View {
                     accessibilityPrompt
                 } else if !hasScreenRecordingPermission {
                     permissionPrompt
-                } else if appState.itemManager.isItemDiscoveryUnavailable {
+                } else if showsDiscoveryUnavailable {
                     discoveryUnavailable
                 } else {
                     ContentUnavailableView(
@@ -106,8 +123,12 @@ struct MenuBarLayoutSettingsPane: View {
                         ForEach(visibleMetas, id: \.kind) { meta in
                             sectionView(meta: meta, items: sections[meta.kind] ?? [])
                         }
-                        if hiddenDividerX == nil, alwaysHiddenDividerX == nil {
-                            Text("Can't find Ice's section dividers — make sure the Hidden sections are enabled, then press Refresh.")
+                        if #available(macOS 27, *) {
+                            Text("Drag an app into Hidden or Always Hidden. Ice++ hides that app when the section is collapsed, and the Ice Bar opens it. System icons stay in the menu bar.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if hiddenDividerX == nil, alwaysHiddenDividerX == nil {
+                            Text("Can't find Ice++'s section dividers — make sure the Hidden sections are enabled, then press Refresh.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -144,9 +165,9 @@ struct MenuBarLayoutSettingsPane: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: meta.icon)
-                Text(meta.title)
+                Text(LocalizedStringKey(meta.title))
                     .font(.headline)
-                Text(meta.subtitle)
+                Text(LocalizedStringKey(meta.subtitle))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -157,7 +178,7 @@ struct MenuBarLayoutSettingsPane: View {
                     newItemPlaceholder
                 }
                 if items.isEmpty {
-                    Text(meta.emptyHint)
+                    Text(LocalizedStringKey(meta.emptyHint))
                         .font(.callout)
                         .foregroundStyle(.tertiary)
                         .padding(.vertical, 8)
@@ -227,7 +248,13 @@ struct MenuBarLayoutSettingsPane: View {
                 .frame(maxWidth: 68)
         }
         .frame(width: 68)
-        .help(pending ? "\(item.subtitle ?? item.title) — đang di chuyển…" : (item.subtitle ?? item.title))
+        .help(
+            Text(
+                pending
+                    ? String(format: String(localized: "%@ — moving…"), item.subtitle ?? item.title)
+                    : (item.subtitle ?? item.title)
+            )
+        )
         .opacity(pending ? 0.7 : 1)
         .overlay {
             // Blue outline on drag hover: releasing inserts before this icon.
@@ -309,7 +336,36 @@ struct MenuBarLayoutSettingsPane: View {
     /// attempts the UI rebuilds from truth, so a miss never leaves a fake
     /// optimistic position behind.
     /// The `isMoving` guard blocks a second drag from fighting over the mouse.
+    /// On macOS 27, section membership is the saved bundle-id layout.
+    /// Command-drag does not stick: MenuBarAgent reorders items on its own,
+    /// and stretching a spacer to mark the section is what pushed every icon
+    /// off the bar.
+    private func assignOnMacOS27(itemID: String, to kind: MenuBarItemAXDiscovery.SectionKind) -> Bool {
+        guard #available(macOS 27, *) else {
+            return false
+        }
+        guard let item = findItem(id: itemID)?.item else {
+            return true
+        }
+        guard let bundleID = item.bundleID, !item.isSystem, bundleID != Bundle.main.bundleIdentifier else {
+            return true
+        }
+        let section: MenuBarConcealer27.Section = switch kind {
+        case .visible: .visible
+        case .hidden: .hidden
+        case .alwaysHidden: .alwaysHidden
+        }
+        appState.menuBarConcealer.setSection(section, for: bundleID)
+        Task {
+            await refresh()
+        }
+        return true
+    }
+
     private func drop(itemID: String, to kind: MenuBarItemAXDiscovery.SectionKind) async {
+        if assignOnMacOS27(itemID: itemID, to: kind) {
+            return
+        }
         guard !isMoving else {
             return
         }
@@ -399,6 +455,9 @@ struct MenuBarLayoutSettingsPane: View {
     /// then verifies the landing — a missed drag is retried with fresh frames
     /// instead of snapping back and forcing the user to redo it by hand.
     private func drop(itemID: String, onto targetID: String) async {
+        if let target = findItem(id: targetID), assignOnMacOS27(itemID: itemID, to: target.kind) {
+            return
+        }
         guard !isMoving else {
             return
         }
@@ -593,7 +652,7 @@ struct MenuBarLayoutSettingsPane: View {
         VStack(spacing: 12) {
             Text("Menu bar layout requires accessibility permission")
                 .font(.title2)
-            Text("Grant Accessibility access so Ice can list the icons in your menu bar.")
+            Text("Grant Accessibility access so Ice++ can list the icons in your menu bar.")
                 .foregroundStyle(.secondary)
             HStack(spacing: 16) {
                 Button("Open System Settings") {
@@ -614,7 +673,7 @@ struct MenuBarLayoutSettingsPane: View {
         VStack(spacing: 12) {
             Text("Menu bar layout requires screen recording permission")
                 .font(.title2)
-            Text("Grant Screen Recording access so Ice can see the icons in your menu bar.")
+            Text("Grant Screen Recording access so Ice++ can see the icons in your menu bar.")
                 .foregroundStyle(.secondary)
             HStack(spacing: 16) {
                 Button("Open System Settings") {
@@ -635,7 +694,7 @@ struct MenuBarLayoutSettingsPane: View {
         VStack(spacing: 12) {
             Text("Menu Bar Layout isn't available on this macOS version")
                 .font(.title2)
-            Text("This version of macOS no longer exposes individual menu bar items to Ice.")
+            Text("This version of macOS no longer exposes individual menu bar items to Ice++.")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -758,6 +817,17 @@ struct MenuBarLayoutSettingsPane: View {
         func kind(centerX: CGFloat?) -> MenuBarItemAXDiscovery.SectionKind {
             MenuBarItemAXDiscovery.classify(centerX: centerX, hiddenDividerX: hiddenX, alwaysHiddenDividerX: alwaysHiddenX)
         }
+        func resolvedKind(bundleID: String?, centerX: CGFloat?) -> MenuBarItemAXDiscovery.SectionKind {
+            guard #available(macOS 27, *) else {
+                return kind(centerX: centerX)
+            }
+            // Divider positions are not a reliable section boundary on macOS 27,
+            // and system items cannot be removed by assessment mode.
+            guard let bundleID, !bundleID.hasPrefix("com.apple."), bundleID != Bundle.main.bundleIdentifier else {
+                return .visible
+            }
+            return appState.menuBarConcealer.sectionKind(for: bundleID)
+        }
         var idCounts = [String: Int]()
         func stableID(for base: String) -> String {
             let n = idCounts[base, default: 0]
@@ -792,13 +862,14 @@ struct MenuBarLayoutSettingsPane: View {
                         appIcon = icon
                     }
                 }
-                grouped[kind(centerX: item.frame.midX), default: []].append(
+                grouped[resolvedKind(bundleID: bundleID, centerX: item.frame.midX), default: []].append(
                     RowItem(
                         id: stableID(for: "cgs:\(item.info):\(item.ownerPID)"),
                         title: item.displayName,
                         subtitle: item.subtitle,
                         systemImage: systemImage,
                         appIcon: appIcon,
+                        bundleID: bundleID,
                         isSystem: bundleID?.hasPrefix("com.apple.") == true,
                         quartzFrame: item.frame
                     )
@@ -824,15 +895,36 @@ struct MenuBarLayoutSettingsPane: View {
                 if let frame = item.axFrame {
                     quartzYs.append(frame.midY)
                 }
-                grouped[kind(centerX: item.axFrame?.midX), default: []].append(
+                grouped[resolvedKind(bundleID: item.bundleID, centerX: item.axFrame?.midX), default: []].append(
                     RowItem(
                         id: stableID(for: "ax:\(item.pid):\(item.bundleID ?? ""):\(item.identifier ?? ""):\(item.title ?? "")"),
                         title: item.displayName,
                         subtitle: item.subtitle,
                         systemImage: systemImage,
                         appIcon: appIcon,
+                        bundleID: item.bundleID,
                         isSystem: item.bundleID?.hasPrefix("com.apple.") == true,
                         quartzFrame: item.axFrame
+                    )
+                )
+            }
+        }
+        if #available(macOS 27, *) {
+            // A concealed app is gone from the menu bar, so Accessibility
+            // cannot list it. Without this row the user could not drag it
+            // back to Visible.
+            let present = Set(grouped.values.flatMap { $0.compactMap(\.bundleID) })
+            for entry in appState.menuBarConcealer.iceBarEntries() where !present.contains(entry.bundleID) {
+                grouped[resolvedKind(bundleID: entry.bundleID, centerX: nil), default: []].append(
+                    RowItem(
+                        id: stableID(for: "layout:\(entry.bundleID)"),
+                        title: entry.name,
+                        subtitle: nil,
+                        systemImage: nil,
+                        appIcon: entry.icon,
+                        bundleID: entry.bundleID,
+                        isSystem: false,
+                        quartzFrame: nil
                     )
                 )
             }
@@ -1005,6 +1097,8 @@ private struct RowItem: Identifiable {
     let subtitle: String?
     let systemImage: String?
     let appIcon: NSImage?
+    /// Owning app. Nil for an item Accessibility could not attribute.
+    let bundleID: String?
     /// true for com.apple.* bundles: attaches the Apple logo badge as in the mock.
     let isSystem: Bool
     /// Frame in Quartz coordinates (top-left origin, same system as `CGEvent`),
@@ -1025,6 +1119,12 @@ private struct SectionMeta {
         SectionMeta(kind: .visible, title: "Visible", icon: "eye", subtitle: "Always in the menu bar", emptyHint: "No visible icons"),
         SectionMeta(kind: .hidden, title: "Hidden", icon: "eye.slash", subtitle: "A hover or click away — or ⌘-drag icons left of the chevron", emptyHint: "No hidden icons — drop icons here to hide them"),
         SectionMeta(kind: .alwaysHidden, title: "Always Hidden", icon: "moon", subtitle: "Out of sight until you double-click or ⌥-click the chevron", emptyHint: "No always-hidden icons — drop icons here to hide them"),
+    ]
+
+    static let allMacOS27 = [
+        SectionMeta(kind: .visible, title: "Visible", icon: "eye", subtitle: "Stays in the menu bar", emptyHint: "Drop an app here to keep it in the menu bar"),
+        SectionMeta(kind: .hidden, title: "Hidden", icon: "eye.slash", subtitle: "Hidden while this section is collapsed", emptyHint: "Drop an app here to hide it"),
+        SectionMeta(kind: .alwaysHidden, title: "Always Hidden", icon: "moon", subtitle: "Hidden until you open this section", emptyHint: "Drop an app here to always hide it"),
     ]
 }
 

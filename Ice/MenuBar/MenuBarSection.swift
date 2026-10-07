@@ -140,17 +140,22 @@ final class MenuBarSection {
         controlItem.state = Self.initialState(for: shownDefaultsKey)
         controlItem.$state
             .sink { [weak self] state in
-                guard let self, self.persistsStateChanges else {
+                guard let self else {
                     return
                 }
-                Defaults.set(state == .showItems, forKey: shownDefaultsKey)
-                // The Ice icon mirrors the always-hidden section; repaint
-                // its arrow when that section changes.
-                if
-                    name == .alwaysHidden,
-                    let visibleSection = self.appState?.menuBarManager.section(withName: .visible)
-                {
-                    visibleSection.controlItem.updateStatusItem(with: visibleSection.controlItem.state)
+                if self.persistsStateChanges {
+                    Defaults.set(state == .showItems, forKey: shownDefaultsKey)
+                    // The Ice icon mirrors the hidden section; repaint its
+                    // glyph when that section changes.
+                    if
+                        name == .hidden,
+                        let visibleSection = self.appState?.menuBarManager.section(withName: .visible)
+                    {
+                        visibleSection.controlItem.updateStatusItem(with: visibleSection.controlItem.state)
+                    }
+                }
+                if #available(macOS 27, *) {
+                    self.appState?.menuBarConcealer.update()
                 }
             }
             .store(in: &cancellables)

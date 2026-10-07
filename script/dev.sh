@@ -27,15 +27,19 @@ DEST="platform=macOS,arch=arm64"
 
 SIGN_ARGS=()
 if [ "$IDENTITY" = "-" ]; then
+    echo "⚠️  Ad-hoc signature requested. macOS treats every rebuild as a new app and asks for Accessibility and Screen Recording again."
     SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
 elif security find-certificate -c "$IDENTITY" >/dev/null 2>&1; then
-    SIGN_ARGS=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=$IDENTITY" "DEVELOPMENT_TEAM=${ICE_DEVELOPMENT_TEAM:-}")
+    # Stable certificate: the designated requirement is the bundle id plus this
+    # cert, not the binary's cdhash, so a rebuild keeps the TCC grant.
+    SIGN_ARGS=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=$IDENTITY" "DEVELOPMENT_TEAM=${ICE_DEVELOPMENT_TEAM:-}" CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES)
 else
-    echo "⚠️  No \"$IDENTITY\" cert found — falling back to an ad-hoc build (macOS will ask for permissions again)."
-    echo "   One-time setup: Keychain Access > Certificate Assistant > Create a Certificate…"
+    echo "❌ No \"$IDENTITY\" code signing certificate in the login keychain."
+    echo "   Debug builds must use this certificate. An ad-hoc signature gets a new cdhash"
+    echo "   every compile, and macOS asks for Accessibility and Screen Recording again."
+    echo "   Create it once: Keychain Access > Certificate Assistant > Create a Certificate…"
     echo "   Name: $IDENTITY | Identity Type: Self Signed Root | Certificate Type: Code Signing"
-    echo "   Then re-run this script, or force ad-hoc: ICE_CODE_SIGN_IDENTITY=- ./script/dev.sh"
-    SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
+    exit 1
 fi
 
 echo "→ Building Debug (sign: ${IDENTITY})…"
@@ -55,7 +59,18 @@ echo "→ Copying to $DEV_APP (fixed path = keeps permissions)…"
 rm -rf "$DEV_APP"
 ditto "$SRC_APP" "$DEV_APP"
 echo "→ Re-signing uniformly ($IDENTITY, fixes dyld Team IDs)…"
-codesign --force --deep --sign "$IDENTITY" "$DEV_APP"
+# Sign frameworks on their own, then the app. --deep on the .app drops the
+# entitlements. The Ice Dev certificate has no Team ID, so Debug turns off
+# library validation or dyld refuses Sparkle.
+ENTITLEMENTS="Ice/Ice-Debug.entitlements"
+if [ -d "$DEV_APP/Contents/Frameworks" ]; then
+    find "$DEV_APP/Contents/Frameworks" -name '*.framework' -print0 |
+        while IFS= read -r -d '' framework; do
+            codesign --force --deep --sign "$IDENTITY" --timestamp=none --options runtime "$framework"
+        done
+fi
+codesign --force --sign "$IDENTITY" --timestamp=none --options runtime \
+    --entitlements "$ENTITLEMENTS" "$DEV_APP"
 codesign --verify --deep --strict "$DEV_APP"
 echo "→ Current signature:"
 codesign -dvvv "$DEV_APP" 2>&1 | grep -E "^(Authority|Identifier)" || true

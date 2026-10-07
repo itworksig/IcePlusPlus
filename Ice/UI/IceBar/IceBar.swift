@@ -13,6 +13,11 @@ final class IceBarPanel: NSPanel {
 
     private(set) var currentSection: MenuBarSection.Name?
 
+    /// Horizontal click position from the moment the bar opens. Later size
+    /// changes keep the bar under that click instead of the live pointer,
+    /// and instead of the right edge when the Ice icon window cannot be found.
+    private var anchorX: CGFloat?
+
     private lazy var colorManager = IceBarColorManager(iceBarPanel: self)
 
     private var cancellables = Set<AnyCancellable>()
@@ -120,8 +125,10 @@ final class IceBarPanel: NSPanel {
                 }
                 return getOrigin(for: .iceIcon)
             case .mousePointer:
-                guard let location = MouseCursor.locationAppKit else {
-                    return getOrigin(for: .iceIcon)
+                // Prefer the click that opened the bar. The live pointer is
+                // only a fallback for a show that did not record one.
+                guard let pointerX = anchorX ?? MouseCursor.locationAppKit?.x else {
+                    return originForRightOfScreen
                 }
 
                 let lowerBound = screen.frame.minX
@@ -131,7 +138,7 @@ final class IceBarPanel: NSPanel {
                     return originForRightOfScreen
                 }
 
-                return CGPoint(x: (location.x - frame.width / 2).clamped(to: lowerBound...upperBound), y: originY)
+                return CGPoint(x: (pointerX - frame.width / 2).clamped(to: lowerBound...upperBound), y: originY)
             case .iceIcon:
                 let lowerBound = screen.frame.minX
                 let upperBound = screen.frame.maxX - frame.width
@@ -141,10 +148,11 @@ final class IceBarPanel: NSPanel {
                     let section = appState.menuBarManager.section(withName: .visible),
                     let windowID = section.controlItem.windowID,
                     // Bridging.getWindowFrame is more reliable than ControlItem.windowFrame,
-                    // i.e. if the control item is offscreen.
+                    // i.e. if the control item is offscreen. On macOS 27 that
+                    // window id does not exist, so fall through to the click.
                     let itemFrame = Bridging.getWindowFrame(for: windowID)
                 else {
-                    return originForRightOfScreen
+                    return getOrigin(for: .mousePointer)
                 }
 
                 return CGPoint(x: (itemFrame.midX - frame.width / 2).clamped(to: lowerBound...upperBound), y: originY)
@@ -159,14 +167,20 @@ final class IceBarPanel: NSPanel {
             return
         }
 
+        // Record the click before any await. macOS 27 cannot resolve the Ice
+        // icon window, and the bar would otherwise pin to the right edge.
+        anchorX = MouseCursor.locationAppKit?.x
+
         // Important that we set the navigation state and current section before updating the cache.
         appState.navigationState.isIceBarPresented = true
         currentSection = section
 
-        await appState.itemManager.cacheItemsIfNeeded()
+        if #unavailable(macOS 27) {
+            await appState.itemManager.cacheItemsIfNeeded()
 
-        if ScreenCapture.cachedCheckPermissions() {
-            await appState.imageCache.updateCache()
+            if ScreenCapture.cachedCheckPermissions() {
+                await appState.imageCache.updateCache()
+            }
         }
 
         // A newer show() may have claimed the panel while waiting for the cache —
@@ -194,6 +208,7 @@ final class IceBarPanel: NSPanel {
         super.close()
         contentView = nil
         currentSection = nil
+        anchorX = nil
         appState?.navigationState.isIceBarPresented = false
     }
 }
@@ -327,6 +342,12 @@ private struct IceBarContentView: View {
     }
 
     private var contentHeight: CGFloat? {
+        // The Ice Bar is its own row, so it can be taller than the 22pt
+        // status bar. The menu bar window is taller still because of the
+        // notch, and using that height blew the icons up.
+        if itemManager.isItemDiscoveryUnavailable {
+            return iconSide + 4
+        }
         guard let menuBarHeight = imageCache.menuBarHeight ?? screen.getMenuBarHeight() else {
             return nil
         }
@@ -335,6 +356,10 @@ private struct IceBarContentView: View {
         }
         return menuBarHeight
     }
+
+    /// Ice Bar app icons, in points. Larger than the 18pt menu-bar cube.
+    /// The bar grows with this side so the icons are not clipped.
+    private var iconSide: CGFloat { 28 }
 
     private var clipShape: AnyInsettableShape {
         barShape
@@ -449,14 +474,14 @@ private struct IceBarContentView: View {
                     appState.navigationState.settingsNavigationIdentifier = .advanced
                     appState.appDelegate?.openSettingsWindow()
                 } label: {
-                    Text("Open Ice Settings")
+                    Text("Open Ice++ Settings")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.link)
             }
             .padding(.horizontal, 10)
         } else if menuBarManager.isMenuBarHiddenBySystemUserDefaults {
-            Text("Ice cannot display menu bar items for automatically hidden menu bars")
+            Text("Ice++ cannot display menu bar items for automatically hidden menu bars")
                 .padding(.horizontal, 10)
         } else if imageCache.cacheFailed(for: section) {
             Text("Unable to display menu bar items")
@@ -486,6 +511,7 @@ private struct IceBarContentView: View {
         /// SwiftUI diffs smoothly.
         let id: String
         let pid: pid_t
+        let bundleID: String?
         let identifier: String?
         let title: String?
         let displayName: String
@@ -527,16 +553,13 @@ private struct IceBarContentView: View {
                 .foregroundStyle(.link)
             }
             .padding(.horizontal, 10)
-        } else if isLoadingAXRows && axRows.isEmpty {
-            ProgressView()
-                .padding(.horizontal, 10)
-        } else if axRows.isEmpty {
+        } else if displayedRows.isEmpty {
             Text("Unable to display menu bar items")
                 .padding(.horizontal, 10)
         } else {
             ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(axRows) { row in
+                HStack(spacing: 4) {
+                    ForEach(displayedRows) { row in
                         axRowView(row)
                     }
                 }
@@ -549,6 +572,32 @@ private struct IceBarContentView: View {
         }
     }
 
+    /// Hidden apps from the layout, available before the Accessibility scan finishes.
+    private var layoutRows: [AXRowItem] {
+        guard #available(macOS 27, *) else {
+            return []
+        }
+        return appState.menuBarConcealer.iceBarEntries(in: section).map { entry in
+            AXRowItem(
+                id: "layout:\(entry.bundleID)",
+                pid: entry.pid,
+                bundleID: entry.bundleID,
+                identifier: nil,
+                title: nil,
+                displayName: entry.name,
+                systemImage: nil,
+                appIcon: entry.icon,
+                midX: nil
+            )
+        }
+    }
+
+    /// Scan results when they exist. Until then, the layout list, so the bar
+    /// does not sit on a spinner while Accessibility walks every app.
+    private var displayedRows: [AXRowItem] {
+        axRows.isEmpty ? layoutRows : axRows
+    }
+
     @ViewBuilder
     private func axRowView(_ row: AXRowItem) -> some View {
         Button {
@@ -556,13 +605,13 @@ private struct IceBarContentView: View {
         } label: {
             if let systemName = row.systemImage {
                 Image(systemName: systemName)
-                    .font(.system(size: 16))
-                    .frame(minWidth: 28, minHeight: 22)
+                    .font(.system(size: iconSide - 4))
+                    .frame(width: iconSide, height: iconSide)
             } else if let icon = row.appIcon {
                 Image(nsImage: icon)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 24, height: 22)
+                    .frame(width: iconSide, height: iconSide)
             } else if let title = row.title, !title.isEmpty {
                 Text(title)
                     .lineLimit(1)
@@ -603,7 +652,10 @@ private struct IceBarContentView: View {
             return
         }
 
-        for attempt in 0..<3 {
+        // The layout list is already on screen. One scan is enough to merge
+        // anything Accessibility can still see. Repeating it only delayed the bar.
+        let attempts = layoutRows.isEmpty ? 3 : 1
+        for attempt in 0..<attempts {
             await scanAXRowsOnce(attempt: attempt)
             if !axRows.isEmpty || Task.isCancelled {
                 return
@@ -618,6 +670,16 @@ private struct IceBarContentView: View {
         // positions are also looked up in the background via AX (same coordinate space as axFrame).
         let apps = NSWorkspace.shared.runningApplications
         let wantedSection = section
+
+        if #available(macOS 27, *) {
+            // The section chevrons are not on the bar, so they cannot mark
+            // what is already visible. Accessibility still reports Wi-Fi,
+            // battery, and every other on-screen icon. The bar lists only
+            // the apps the user hid.
+            axRows = layoutRows
+            Logger.iceBar.debug("axScan layout-only wanted=\(wantedSection) rows=\(axRows.count)")
+            return
+        }
 
         let (found, axDividers) = await Task.detached(priority: .userInitiated) {
             (
@@ -682,6 +744,7 @@ private struct IceBarContentView: View {
                 AXRowItem(
                     id: stableID(for: "ax:\(item.pid):\(item.bundleID ?? ""):\(item.identifier ?? ""):\(item.title ?? "")"),
                     pid: item.pid,
+                    bundleID: item.bundleID,
                     identifier: item.identifier,
                     title: item.title,
                     displayName: item.displayName,
@@ -691,11 +754,35 @@ private struct IceBarContentView: View {
                 )
             )
         }
+        if #available(macOS 27, *) {
+            // Concealed apps are gone from the menu bar, so Accessibility
+            // cannot see them. The saved layout is the only list the Ice Bar
+            // has for those icons.
+            let known = Set(rows.compactMap(\.bundleID))
+            for entry in appState.menuBarConcealer.iceBarEntries() where !known.contains(entry.bundleID) {
+                rows.append(
+                    AXRowItem(
+                        id: stableID(for: "layout:\(entry.bundleID)"),
+                        pid: entry.pid,
+                        bundleID: entry.bundleID,
+                        identifier: nil,
+                        title: nil,
+                        displayName: entry.name,
+                        systemImage: nil,
+                        appIcon: entry.icon,
+                        midX: nil
+                    )
+                )
+            }
+        }
         // Expanding spacer (garbage divider frames): drop items already visible in the
         // trailing pill region — the user already sees them on the menubar. Only filter
         // when both dividers are missing; when a divider is still usable, classify by section
         // as before. Skip fullscreen (pill isn't drawn, width is stale).
-        if dividersMissing,
+        // macOS 27: a wrong trailing width (the whole status area) deletes every
+        // row, which is the empty Ice Bar. The layout list above is the filter.
+        if #unavailable(macOS 27),
+           dividersMissing,
            !appState.isActiveSpaceFullscreen,
            let trailingWidth = MenuBarOverlayPanelContentView.currentTrailingVisibleWidth(for: screen.displayID),
            trailingWidth > 0, trailingWidth < screen.frame.width
@@ -711,9 +798,28 @@ private struct IceBarContentView: View {
     /// → click). Runs in the background since each app can block for up to ~1s.
     private func press(_ row: AXRowItem) {
         closePanel()
-        Task.detached(priority: .userInitiated) {
-            try? await Task.sleep(for: .milliseconds(25))
-            _ = MenuBarItemAXDiscovery.press(pid: row.pid, identifier: row.identifier, title: row.title)
+        let bundleID = row.bundleID
+        let pid = row.pid
+        let identifier = row.identifier
+        let title = row.title
+        Task { @MainActor in
+            var revealed = false
+            if #available(macOS 27, *), let bundleID, appState.menuBarConcealer.isConcealed(bundleID) {
+                appState.menuBarConcealer.temporarilyShow(bundleID)
+                revealed = true
+                // MenuBarAgent animates the item back. Pressing before it
+                // lands hits an empty accessibility tree.
+                try? await Task.sleep(for: .milliseconds(800))
+            } else {
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            await Task.detached(priority: .userInitiated) {
+                _ = MenuBarItemAXDiscovery.press(pid: pid, identifier: identifier, title: title)
+            }.value
+            if revealed, let bundleID {
+                try? await Task.sleep(for: .seconds(12))
+                appState.menuBarConcealer.endTemporaryShow(bundleID)
+            }
         }
     }
 }

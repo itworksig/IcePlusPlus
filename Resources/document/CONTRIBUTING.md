@@ -1,4 +1,4 @@
-# Contributing to Ice
+# Contributing to Ice++
 
 Thanks for your interest in contributing to Ice! This guide covers the minimum you need to get running and get a PR merged.
 
@@ -13,8 +13,8 @@ Please also read [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md). By participating, 
 ## Quick start
 
 ```bash
-git clone https://github.com/cavaldos/Ice.git
-cd Ice
+git clone https://github.com/itworksig/IcePlusPlus.git
+cd IcePlusPlus
 
 # Build Debug and launch the app
 ./script/run.sh
@@ -52,7 +52,7 @@ Other helpers live in [script/README.md](../script/README.md):
 
 ## How to contribute
 
-1. Check existing [issues](https://github.com/cavaldos/Ice/issues) — bug reports and feature requests have templates, please use them.
+1. Check existing [issues](https://github.com/itworksig/IcePlusPlus/issues) — bug reports and feature requests have templates, please use them.
 2. Fork the repo and create a branch: `feat/short-name` or `fix/short-name`.
 3. Make your change and verify:
    ```bash

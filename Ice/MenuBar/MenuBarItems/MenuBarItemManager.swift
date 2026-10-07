@@ -175,6 +175,11 @@ final class MenuBarItemManager: ObservableObject {
 
     /// Sets up the manager.
     func performSetup() {
+        if #available(macOS 27, *) {
+            // Per-item windows are gone. Say so before the first Ice Bar open,
+            // which otherwise waits on a screenshot cache that can never fill.
+            isItemDiscoveryUnavailable = true
+        }
         configureCancellables()
     }
 
@@ -339,6 +344,10 @@ extension MenuBarItemManager {
     ///   window IDs, so without this the post-drag reconcile would classify
     ///   pre-drag frames and the icon would look like it "snapped back".
     func cacheItemsIfNeeded(force: Bool = false) async {
+        if #available(macOS 27, *) {
+            isItemDiscoveryUnavailable = true
+            return
+        }
         do {
             try await waitForItemsToStopMoving(timeout: .seconds(1))
         } catch is TaskTimeoutError {

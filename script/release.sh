@@ -1,7 +1,7 @@
 #!/bin/bash
-# Step 1: tag + push to trigger CI (CI builds Ice.zip on the GitHub Release).
-# Usage: ./script/release.sh vX.Y.Z   (e.g. ./script/release.sh v0.11.13)
-# Next:  wait for CI green, then ./script/update-appcast.sh vX.Y.Z
+# Tag + push to trigger CI (CI builds Ice.zip and Ice-arm64.dmg on the GitHub Release).
+# Usage: ./script/release.sh vX.Y.Z   (e.g. ./script/release.sh v27.0.2)
+# The app compares that tag with its installed version. No appcast step.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -23,4 +23,5 @@ fi
 
 git tag "$TAG"
 git push origin "$TAG"
-echo "pushed $TAG — watch CI, then run: ./script/update-appcast.sh $TAG"
+echo "pushed $TAG — CI builds Ice.zip and Ice-arm64.dmg onto the release."
+echo "Ice++ treats the release as an update when the tag is newer than the installed version."

@@ -45,11 +45,9 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: sidebarWidth)
+            Divider()
             detailView
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // ponytail: no Divider — like Pelmet, sidebar stays light and
-                // the content sits on a darker shade instead of a line.
-                .background(.black.opacity(0.2))
         }
     }
 

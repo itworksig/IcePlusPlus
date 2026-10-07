@@ -58,71 +58,41 @@ jobs:
             | sed -n 's/^ *BUILT_PRODUCTS_DIR *= *//p' | head -1)
           echo "APP_PATH=$BUILD_DIR/Ice.app" >> $GITHUB_ENV
           echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
-      - name: Zip and publish to GitHub Release
+      - name: Package Apple silicon zip and disk image
         run: |
+          set -euo pipefail
+          ARCHES=$(lipo -archs "$APP_PATH/Contents/MacOS/Ice")
+          echo "Architectures: $ARCHES"
+          if [ "$ARCHES" != "arm64" ]; then
+            echo "Expected an Apple silicon (arm64) binary, got: $ARCHES"
+            exit 1
+          fi
           codesign --force --deep --sign - "$APP_PATH"
           ditto -c -k --keepParent "$APP_PATH" Ice.zip
+          STAGE=$(mktemp -d)
+          ditto "$APP_PATH" "$STAGE/Ice.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "Ice" -srcfolder "$STAGE" -ov -format UDZO Ice-arm64.dmg
+          rm -rf "$STAGE"
+          cat > release.json << EOF
+          {
+            "version": "$VERSION",
+            "build": "$BUILD_NUMBER",
+            "arch": "arm64",
+            "zip": "Ice.zip",
+            "dmg": "Ice-arm64.dmg"
+          }
+          EOF
+          echo "Packaged Ice.zip and Ice-arm64.dmg for $VERSION ($BUILD_NUMBER)"
       - uses: softprops/action-gh-release@v2
         with:
-          files: Ice.zip
+          files: |
+            Ice.zip
+            Ice-arm64.dmg
+            release.json
           generate_release_notes: true
-  update-homebrew:
-    needs: release
-    runs-on: ubuntu-latest
-    if: ${{ !contains(github.ref, '-') }} # Skip for pre-releases
-    steps:
-      - name: Derive version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - name: Get SHA256 from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "SHA256=$(gh api repos/cavaldos/Ice/releases/tags/$GITHUB_REF_NAME \
-            --jq '.assets[] | select(.name == "Ice.zip") | .digest' \
-            | sed 's/sha256://')" >> $GITHUB_ENV
-      - name: Checkout homebrew-tap
-        uses: actions/checkout@v4
-        with:
-          repository: cavaldos/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
-      - name: Update cask
-        run: |
-          cat > homebrew-tap/Casks/ice.rb << 'EOF'
-          cask "ice" do
-            version "${{ env.VERSION }}"
-            sha256 "${{ env.SHA256 }}"
-
-            url "https://github.com/cavaldos/Ice/releases/download/v#{version}/Ice.zip"
-            name "Ice"
-            desc "Free and open-source menu bar manager for macOS"
-            homepage "https://icemenubar.app"
-
-            depends_on macos: :sonoma
-            conflicts_with cask: "jordanbaird-ice"
-
-            app "Ice.app"
-
-            zap trash: [
-              "~/Library/Preferences/com.jordanbaird.Ice.plist",
-            ]
-
-            caveats <<~EOS
-              Ice is ad-hoc signed. On first launch, right-click the app and choose Open.
-              After every update, re-grant Accessibility and Screen Recording in
-              System Settings > Privacy & Security (see https://github.com/cavaldos/Ice#permissions).
-            EOS
-          end
-          EOF
-      - name: Commit and push
-        run: |
-          cd homebrew-tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/ice.rb
-          git diff --cached --quiet || git commit -m "ice ${{ env.VERSION }}"
-          git push
-# After the Release finishes, publish the appcast so installed apps see it:
-#   ./script/update-appcast.sh <tag> --key <private-key.pem>
-# (pushes appcast.xml to the ice-releases repo; SUFeedURL https://cavaldos.github.io/ice-releases/appcast.xml)
-# ponytail: ad-hoc signing is for internal testing only, public releases need Developer ID + notarization
+# Check for Updates compares CFBundleShortVersionString with the tag on
+# https://github.com/itworksig/IcePlusPlus/releases/latest
+# Asset names must stay Ice.zip and Ice-arm64.dmg (see GitHubUpdates).
+# Ad-hoc signing is for this fork's own installs. A Developer ID signature
+# is what Gatekeeper wants for a public download.

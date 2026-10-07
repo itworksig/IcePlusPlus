@@ -18,6 +18,19 @@ extension Bundle {
         object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String
     }
 
+    /// The icon file in this bundle.
+    ///
+    /// `NSImage.applicationIconName` is cached by bundle id. A trashed copy of
+    /// Ice still owns `com.jordanbaird.Ice`, so that cache keeps serving the
+    /// original cube.
+    var appIconImage: NSImage? {
+        if let url = url(forResource: "AppIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSImage(named: NSImage.applicationIconName)
+    }
+
     /// The bundle's version string.
     ///
     /// This accessor looks for an associated value for the "CFBundleShortVersionString"

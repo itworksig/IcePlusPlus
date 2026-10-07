@@ -188,6 +188,7 @@ extension Defaults {
         case hasMigrated0_11_10 = "hasMigrated0_11_10"
         case hasMigrated0_11_27 = "hasMigrated0_11_27"
         case hasMigrated0_11_27CorrectiveReveal = "hasMigrated0_11_27CorrectiveReveal"
+        case macOS27Layout = "MacOS27Layout"
 
         // MARK: Deprecated
 

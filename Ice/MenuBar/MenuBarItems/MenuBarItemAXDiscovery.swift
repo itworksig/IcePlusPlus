@@ -383,14 +383,14 @@ enum MenuBarItemAXDiscovery {
     }
 
     /// Maximum number of elements read in a single scan.
-    private static let maxElementsVisited = 256
+    private static let maxElementsVisited = 512
 
     /// Maximum depth when descending the AX tree.
     ///
     /// Real items usually sit at grandchild level (e.g. `AXGroup` → `AXMenuBarItem`
     /// inside MenuBarAgent), so this must descend instead of only reading direct
     /// children of `AXExtrasMenuBar`.
-    private static let maxWalkDepth = 4
+    private static let maxWalkDepth = 6
 
     /// Reads an app's `AXExtrasMenuBar`.
     private static func items(for app: NSRunningApplication, visited: inout Int) -> [AXMenuBarItem] {

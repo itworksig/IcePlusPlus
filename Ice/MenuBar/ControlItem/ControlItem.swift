@@ -29,27 +29,19 @@ final class ControlItem {
 
     /// Length of an expanded hiding spacer.
     ///
-    /// On macOS 27, a spacer wider than the native status region is discarded
-    /// instead of pushing its neighbours into overflow (jordanbaird/Ice#980),
-    /// so the width is fitted inside the region. Older systems keep the
-    /// 10 000 trick.
+    /// On macOS 27 a wide spacer is parked off the bottom of the screen and
+    /// every other icon disappears with it. Hiding is done by
+    /// ``MenuBarConcealer27`` instead, so the divider stays a normal chevron.
+    /// Older systems keep the 10 000 trick.
     private func expandedHidingLength() -> CGFloat {
         if #available(macOS 27, *) {
-            let screen = window?.screen ?? NSScreen.main
-            let regionWidth: CGFloat
-            if let rightArea = screen?.auxiliaryTopRightArea {
-                regionWidth = rightArea.width
-            } else if let screen {
-                let appMenuWidth = appState?.menuBarManager.getApplicationMenuFrame(for: screen.displayID)?.width ?? 300
-                regionWidth = screen.frame.width - appMenuWidth
-            } else {
-                regionWidth = 0
-            }
-            if regionWidth.isFinite, regionWidth > 64 {
-                return max(32, regionWidth - 32)
-            }
-            // ponytail: fallback guess inside any real status region; exact fit recomputed on next toggle
-            return 1_000
+            // Measured on macOS 27.2 (1728pt display, 771pt status area): a
+            // spacer of `regionWidth - 32` (739) is parked at
+            // `(0, -33, 755, 33)`, off the bottom of the screen, and the
+            // status area loses every other icon. Hiding is done by
+            // MenuBarConcealer27 instead. The 10_000pt spacer still works
+            // on older systems.
+            return Lengths.standard
         }
         return Lengths.expanded
     }
@@ -357,8 +349,7 @@ final class ControlItem {
                     } else {
                         removeFromMenuBar()
                     }
-                    // The Ice icon mirrors this section; repaint its arrow
-                    // now that the source has changed.
+                    // The section list changed; redraw the Ice icon.
                     visibleSection.controlItem.updateStatusItem(with: visibleSection.controlItem.state)
                 }
                 .store(in: &c)
@@ -413,11 +404,11 @@ final class ControlItem {
             let visibleImage = reversed ? icon.hidden : icon.visible
             // Closed points right like a collapsed disclosure; open points
             // left toward the revealed items, matching the section dividers.
-            // The arrow mirrors the always-hidden section while it is enabled;
-            // otherwise it mirrors this section.
-            let alwaysHiddenSection = appState.menuBarManager.section(withName: .alwaysHidden)
-            let showsOpenArrow = if alwaysHiddenSection?.isEnabled == true {
-                alwaysHiddenSection?.controlItem.state == .showItems
+            // The icon opens the hidden section, so its glyph follows that
+            // section while the section is enabled.
+            let hiddenSection = appState.menuBarManager.section(withName: .hidden)
+            let showsOpenArrow = if hiddenSection?.isEnabled == true {
+                hiddenSection?.controlItem.state == .showItems
             } else {
                 state == .showItems
             }
@@ -429,19 +420,28 @@ final class ControlItem {
                 // Custom icons need to be resized to fit inside the button.
                 let originalWidth = originalImage.size.width
                 let originalHeight = originalImage.size.height
-                let ratio = max(originalWidth / 25, originalHeight / 17)
+                let ratio = max(originalWidth / ControlItemImage.menuBarGlyph, originalHeight / ControlItemImage.menuBarGlyph)
                 let newSize = CGSize(width: originalWidth / ratio, height: originalHeight / ratio)
                 button.image = originalImage.resized(to: newSize)
             }
         case .hidden, .alwaysHidden:
             switch state {
             case .hideItems:
-                isVisible = true
-                // Prevent the cell from highlighting while expanded.
-                button.cell?.isEnabled = false
-                // Cell still sometimes briefly flashes on expansion unless manually unhighlighted.
-                button.isHighlighted = false
-                button.image = nil
+                if #available(macOS 27, *) {
+                    // Concealment hides the apps. A chevron here is only an
+                    // extra arrow, so the divider stays in the bar at length 0
+                    // and draws nothing.
+                    isVisible = false
+                    button.cell?.isEnabled = false
+                    button.image = nil
+                } else {
+                    isVisible = true
+                    // Prevent the cell from highlighting while expanded.
+                    button.cell?.isEnabled = false
+                    // Cell still sometimes briefly flashes on expansion unless manually unhighlighted.
+                    button.isHighlighted = false
+                    button.image = nil
+                }
             case .showItems:
                 let shouldShowDivider = appState.settingsManager.advancedSettingsManager.showSectionDividers
                 // ponytail: same sliver collapse as the $showSectionDividers sink
@@ -485,15 +485,15 @@ final class ControlItem {
                 if let alwaysHiddenSection = appState.menuBarManager.section(withName: .alwaysHidden) {
                     alwaysHiddenSection.toggle()
                 }
-            } else if
-                identifier == .iceIcon,
-                let alwaysHiddenSection = appState.menuBarManager.section(withName: .alwaysHidden),
-                alwaysHiddenSection.isEnabled
-            {
-                // The Ice icon drives the always-hidden section, leaving the
-                // hidden section untouched (it is driven by click/hover/scroll
-                // on empty menu bar space, its divider, or its hotkey).
-                alwaysHiddenSection.toggle()
+            } else if identifier == .iceIcon {
+                // The icon opens Hidden. Always Hidden stays on option-click,
+                // so those apps do not fill this bar.
+                if let hiddenSection = appState.menuBarManager.section(withName: .hidden),
+                   hiddenSection.isEnabled {
+                    hiddenSection.toggle()
+                } else {
+                    section?.toggle()
+                }
             } else {
                 section?.toggle()
             }
@@ -511,10 +511,10 @@ final class ControlItem {
             return hotkeySettingsManager.hotkey(withAction: action)
         }
 
-        let menu = NSMenu(title: "Ice")
+        let menu = NSMenu(title: "Ice++")
 
         let settingsItem = NSMenuItem(
-            title: "Ice Settings…",
+            title: String(localized: "Ice++ Settings…"),
             action: #selector(AppDelegate.openSettingsWindow),
             keyEquivalent: ","
         )
@@ -534,7 +534,7 @@ final class ControlItem {
                 continue
             }
             let item = NSMenuItem(
-                title: "\(section.isHidden ? "Show" : "Hide") the \(name.displayString) Section",
+                title: Self.sectionMenuTitle(name: name, isHidden: section.isHidden),
                 action: #selector(toggleMenuBarSection),
                 keyEquivalent: ""
             )
@@ -566,7 +566,7 @@ final class ControlItem {
         menu.addItem(.separator())
 
         let checkForUpdatesItem = NSMenuItem(
-            title: "Check for Updates…",
+            title: String(localized: "Check for Updates…"),
             action: #selector(checkForUpdates),
             keyEquivalent: ""
         )
@@ -576,7 +576,7 @@ final class ControlItem {
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
-            title: "Quit Ice",
+            title: String(localized: "Quit Ice++"),
             action: #selector(NSApp.terminate),
             keyEquivalent: "q"
         )
@@ -584,6 +584,19 @@ final class ControlItem {
         menu.addItem(quitItem)
 
         return menu
+    }
+
+    /// Menu title for showing or hiding one section, looked up as a whole
+    /// phrase so the translation can reorder the words.
+    private static func sectionMenuTitle(name: MenuBarSection.Name, isHidden: Bool) -> String {
+        switch (name, isHidden) {
+        case (.hidden, true): String(localized: "Show the Hidden Section")
+        case (.hidden, false): String(localized: "Hide the Hidden Section")
+        case (.alwaysHidden, true): String(localized: "Show the Always-Hidden Section")
+        case (.alwaysHidden, false): String(localized: "Hide the Always-Hidden Section")
+        case (.visible, true): String(localized: "Show the Visible Section")
+        case (.visible, false): String(localized: "Hide the Visible Section")
+        }
     }
 
     /// Toggles the menu bar section associated with the given menu item.

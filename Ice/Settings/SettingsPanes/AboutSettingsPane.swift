@@ -19,7 +19,7 @@ struct AboutSettingsPane: View {
     }
 
     private var contributeURL: URL {
-        URL(string: "https://github.com/cavaldos/Ice") ?? URL(fileURLWithPath: "/")
+        URL(string: "https://github.com/itworksig/IcePlusPlus") ?? URL(fileURLWithPath: "/")
     }
 
     private var issuesURL: URL {
@@ -27,7 +27,7 @@ struct AboutSettingsPane: View {
     }
 
     private var donateURL: URL {
-        URL(string: "https://ko-fi.com/calvados") ?? URL(fileURLWithPath: "/")
+        URL(string: "https://github.com/itworksig/IcePlusPlus") ?? URL(fileURLWithPath: "/")
     }
 
     private var lastUpdateCheckString: String {
@@ -68,7 +68,7 @@ struct AboutSettingsPane: View {
     private var appIconAndCopyrightSection: some View {
         IceSection(options: .plain) {
             HStack(spacing: 10) {
-                if let nsImage = NSImage(named: NSImage.applicationIconName) {
+                if let nsImage = Bundle.main.appIconImage {
                     Image(nsImage: nsImage)
                         .resizable()
                         .scaledToFit()
@@ -76,7 +76,7 @@ struct AboutSettingsPane: View {
                 }
 
                 VStack(alignment: .leading) {
-                    Text("Ice")
+                    Text(verbatim: "Ice++")
                         .font(.system(size: 72, weight: .medium))
                         .foregroundStyle(.primary)
 
@@ -97,9 +97,7 @@ struct AboutSettingsPane: View {
         IceSection(options: .plain) {
             automaticallyCheckForUpdates
             automaticallyDownloadUpdates
-            if updatesManager.canCheckForUpdates {
-                checkForUpdates
-            }
+            checkForUpdates
         }
         .frame(maxWidth: 600)
     }
@@ -128,20 +126,29 @@ struct AboutSettingsPane: View {
 
     @ViewBuilder
     private var checkForUpdates: some View {
-        HStack {
-            Button("Check for Updates") {
-                updatesManager.checkForUpdates()
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Check for Updates") {
+                    updatesManager.checkForUpdates()
+                }
+                .disabled(updatesManager.isCheckingForUpdates)
+                Spacer()
+                Text("Last checked: \(lastUpdateCheckString)")
+                    .font(.caption)
             }
-            Spacer()
-            Text("Last checked: \(lastUpdateCheckString)")
-                .font(.caption)
+            if let status = updatesManager.updateStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
         }
     }
 
     @ViewBuilder
     private var bottomBar: some View {
         HStack {
-            Button("Quit Ice") {
+            Button("Quit Ice++") {
                 NSApp.terminate(nil)
             }
             Spacer()
@@ -154,7 +161,7 @@ struct AboutSettingsPane: View {
             Button("Report a Bug") {
                 openURL(issuesURL)
             }
-            Button("Support Ice", systemImage: "heart.circle.fill") {
+            Button("Support Ice++", systemImage: "heart.circle.fill") {
                 openURL(donateURL)
             }
         }
