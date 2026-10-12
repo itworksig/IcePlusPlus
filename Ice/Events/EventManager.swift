@@ -384,6 +384,7 @@ extension EventManager {
     // MARK: Handle Left Mouse Up
 
     private func handleLeftMouseUp() {
+        appState?.menuBarManager.endShowingSectionsForDrag()
         guard let appearanceManager = appState?.appearanceManager else {
             return
         }
@@ -409,17 +410,9 @@ extension EventManager {
             return
         }
 
-        // Show all items, including section dividers.
-        for section in appState.menuBarManager.sections {
-            section.controlItem.state = .showItems
-            guard
-                section.controlItem.isSectionDivider,
-                !section.controlItem.isVisible
-            else {
-                continue
-            }
-            section.controlItem.isVisible = true
-        }
+        // Show every section for the drag without saving that as the user's choice.
+        // Mouse-up restores the states from before the drag started.
+        appState.menuBarManager.beginShowingSectionsForDrag()
     }
 
     // MARK: Handle Show On Hover
@@ -461,7 +454,7 @@ extension EventManager {
                 guard self.isMouseInsideEmptyMenuBarSpace else {
                     return
                 }
-                hiddenSection.show()
+                hiddenSection.show(persistState: false)
             } else {
                 guard
                     !self.isMouseInsideMenuBar,
@@ -477,7 +470,7 @@ extension EventManager {
                 else {
                     return
                 }
-                hiddenSection.hide()
+                hiddenSection.hide(persistState: false)
             }
         }
     }
@@ -513,9 +506,9 @@ extension EventManager {
         let averageDelta = (event.scrollingDeltaX + event.scrollingDeltaY) / 2
 
         if averageDelta > 5 {
-            hiddenSection.show()
+            hiddenSection.show(persistState: false)
         } else if averageDelta < -5 {
-            hiddenSection.hide()
+            hiddenSection.hide(persistState: false)
         }
     }
 }
@@ -746,6 +739,14 @@ extension EventManager {
     /// it. Non-activating custom panels don't move focus and are covered by
     /// the window-geometry spare instead. Without AX permission this reads
     /// false, preserving the old behavior.
+    /// Whether a menu or popover currently has keyboard focus.
+    ///
+    /// Reads the accessibility tree only. A missing grant returns false and
+    /// does not prompt.
+    func isMenuInteractionOpen() -> Bool {
+        isMenuOpenGlobally()
+    }
+
     private func isMenuOpenGlobally() -> Bool {
         let focused: UIElement? = (try? systemWideElement.attribute("AXFocusedUIElement")) ?? nil
         var current = focused

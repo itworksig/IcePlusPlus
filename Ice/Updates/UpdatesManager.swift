@@ -94,14 +94,23 @@ final class UpdatesManager: NSObject, ObservableObject {
         scheduleAutomaticCheck()
     }
 
-    /// Checks GitHub for a release newer than this build.
+    /// Checks GitHub for a stable release newer than this build.
     @objc func checkForUpdates() {
+        startCheck(channel: .stable)
+    }
+
+    /// Checks GitHub pre-releases. Automatic checks stay on the stable channel.
+    func checkForTestUpdates() {
+        startCheck(channel: .test)
+    }
+
+    private func startCheck(channel: UpdateChannel) {
         guard !isCheckingForUpdates else {
             return
         }
         automaticCheckTask?.cancel()
         Task {
-            await self.runCheck(userInitiated: true)
+            await self.runCheck(userInitiated: true, channel: channel)
         }
     }
 
@@ -120,12 +129,12 @@ final class UpdatesManager: NSObject, ObservableObject {
                Date().timeIntervalSince(last) < Self.automaticCheckInterval {
                 return
             }
-            await self.runCheck(userInitiated: false)
+            await self.runCheck(userInitiated: false, channel: .stable)
         }
     }
 
-    /// Compares the installed version with the latest GitHub release.
-    private func runCheck(userInitiated: Bool) async {
+    /// Compares the installed version with a GitHub release on one channel.
+    private func runCheck(userInitiated: Bool, channel: UpdateChannel) async {
         guard !isCheckingForUpdates else {
             return
         }
@@ -149,12 +158,19 @@ final class UpdatesManager: NSObject, ObservableObject {
 
         let release: GitHubRelease
         do {
-            release = try await GitHubUpdates.latest()
+            switch channel {
+            case .stable:
+                release = try await GitHubUpdates.latest()
+            case .test:
+                release = try await GitHubUpdates.latestPrerelease()
+            }
         } catch UpdateFailure.noRelease {
-            let message = Self.format(
-                "No published release yet. You are running %@.",
-                installed.display
-            )
+            let message = switch channel {
+            case .stable:
+                Self.format("No published release yet. You are running %@.", installed.display)
+            case .test:
+                Self.format("No test release yet. You are running %@.", installed.display)
+            }
             updateStatus = message
             if userInitiated {
                 show(message)
@@ -179,12 +195,27 @@ final class UpdatesManager: NSObject, ObservableObject {
             return
         }
 
-        if remote > installed {
-            let message = Self.format(
-                "Version %@ is now available. You are running %@.",
-                remote.display,
-                installed.display
-            )
+        let isNewer = switch channel {
+        case .stable:
+            remote > installed
+        case .test:
+            remote.isNewerTestBuild(than: installed, installedRaw: installedRaw)
+        }
+        if isNewer {
+            let message = switch channel {
+            case .stable:
+                Self.format(
+                    "Version %@ is now available. You are running %@.",
+                    remote.display,
+                    installed.display
+                )
+            case .test:
+                Self.format(
+                    "Test version %@ is now available. You are running %@.",
+                    release.tagName,
+                    installed.display
+                )
+            }
             updateStatus = message
             if !userInitiated, !automaticallyDownloadsUpdates {
                 appState?.userNotificationManager.addRequest(
@@ -194,12 +225,24 @@ final class UpdatesManager: NSObject, ObservableObject {
                 )
             }
             let shouldDownload = userInitiated || automaticallyDownloadsUpdates
-            guard shouldDownload, askToInstall(message: message, release: release) else {
+            let title = channel == .test
+                ? String(localized: "A new test update is available")
+                : String(localized: "A new update is available")
+            guard shouldDownload, askToInstall(title: title, message: message, release: release) else {
                 return
             }
-            await downloadAndInstall(release, newerThan: installed)
+            await downloadAndInstall(
+                release,
+                newerThan: installed,
+                allowSameVersion: channel == .test
+            )
         } else {
-            let message = Self.format("Ice++ %@ is up to date.", installed.display)
+            let message = switch channel {
+            case .stable:
+                Self.format("Ice++ %@ is up to date.", installed.display)
+            case .test:
+                Self.format("No newer test version. You are running %@.", installed.display)
+            }
             updateStatus = message
             if userInitiated {
                 show(message)
@@ -208,14 +251,19 @@ final class UpdatesManager: NSObject, ObservableObject {
     }
 
     /// Downloads the Apple silicon build and replaces this app.
-    private func downloadAndInstall(_ release: GitHubRelease, newerThan installed: ReleaseVersion) async {
+    private func downloadAndInstall(
+        _ release: GitHubRelease,
+        newerThan installed: ReleaseVersion,
+        allowSameVersion: Bool
+    ) async {
         let version = ReleaseVersion(release.tagName)?.display ?? release.tagName
         updateStatus = Self.format("Downloading version %@…", version)
         do {
             let app = try await GitHubUpdates.downloadApp(
                 from: release,
                 expectedBundleIdentifier: Constants.bundleIdentifier,
-                newerThan: installed
+                newerThan: installed,
+                allowSameVersion: allowSameVersion
             )
             try GitHubUpdates.spawnReplacement(
                 app: app,
@@ -250,10 +298,10 @@ final class UpdatesManager: NSObject, ObservableObject {
     }
 
     /// Asks before replacing the running app.
-    private func askToInstall(message: String, release: GitHubRelease) -> Bool {
+    private func askToInstall(title: String, message: String, release: GitHubRelease) -> Bool {
         presentSettings()
         let alert = NSAlert()
-        alert.messageText = String(localized: "A new update is available")
+        alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: String(localized: "Install and Relaunch"))
         alert.addButton(withTitle: String(localized: "Later"))
@@ -299,6 +347,11 @@ final class UpdatesManager: NSObject, ObservableObject {
 
 private extension Logger {
     static let updates = Logger(category: "Updates")
+}
+
+private enum UpdateChannel {
+    case stable
+    case test
 }
 
 // MARK: UpdatesManager: SPUUpdaterDelegate

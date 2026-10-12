@@ -573,6 +573,14 @@ final class ControlItem {
         checkForUpdatesItem.target = self
         menu.addItem(checkForUpdatesItem)
 
+        let checkForTestUpdatesItem = NSMenuItem(
+            title: String(localized: "Check for Test Updates…"),
+            action: #selector(checkForTestUpdates),
+            keyEquivalent: ""
+        )
+        checkForTestUpdatesItem.target = self
+        menu.addItem(checkForTestUpdatesItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -610,6 +618,14 @@ final class ControlItem {
             return
         }
         appState.updatesManager.checkForUpdates()
+    }
+
+    /// Opens the settings window and checks for a pre-release.
+    @objc private func checkForTestUpdates() {
+        guard let appState else {
+            return
+        }
+        appState.updatesManager.checkForTestUpdates()
     }
 
     /// Adds the control item to the menu bar.

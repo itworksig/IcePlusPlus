@@ -40,6 +40,7 @@ final class MenuBarConcealer27 {
     /// until this list is refreshed, even when it is not meant to be concealed.
     private var appliedAllow = [String]()
     private var temporarilyShown = Set<String>()
+    private var temporaryShowGeneration = [String: Int]()
     private var isReleased = false
 
     /// The section recorded for an app. Apps with no entry are visible.
@@ -136,13 +137,24 @@ final class MenuBarConcealer27 {
     }
 
     /// Puts one concealed app back on the bar long enough to open its menu.
-    func temporarilyShow(_ bundleID: String) {
+    ///
+    /// Returns a generation so an older click cannot hide the app out from
+    /// under a newer one.
+    @discardableResult
+    func temporarilyShow(_ bundleID: String) -> Int {
+        let generation = (temporaryShowGeneration[bundleID] ?? 0) + 1
+        temporaryShowGeneration[bundleID] = generation
         temporarilyShown.insert(bundleID)
         update()
+        return generation
     }
 
-    /// Hides an app that was temporarily shown, if its section is still collapsed.
-    func endTemporaryShow(_ bundleID: String) {
+    /// Hides an app that was temporarily shown, if this call is still the latest
+    /// one for that app and its section is still collapsed.
+    func endTemporaryShow(_ bundleID: String, generation: Int) {
+        guard temporaryShowGeneration[bundleID] == generation else {
+            return
+        }
         temporarilyShown.remove(bundleID)
         update()
     }

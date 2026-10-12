@@ -197,7 +197,10 @@ final class MenuBarSection {
     }
 
     /// Shows the section.
-    func show() {
+    ///
+    /// - Parameter persistState: Whether the new state should become the
+    ///   user's stored choice. Hover and scroll are transient.
+    func show(persistState: Bool = true) {
         guard
             let appState,
             isHidden
@@ -233,15 +236,15 @@ final class MenuBarSection {
             guard let hiddenSection = appState.menuBarManager.section(withName: .hidden) else {
                 return
             }
-            setState(.showItems, persist: true)
-            hiddenSection.setState(.showItems, persist: true)
+            setState(.showItems, persist: persistState)
+            hiddenSection.setState(.showItems, persist: persistState)
         case .hidden:
             iceBarPanel?.close()
             guard let visibleSection = appState.menuBarManager.section(withName: .visible) else {
                 return
             }
-            setState(.showItems, persist: true)
-            visibleSection.setState(.showItems, persist: true)
+            setState(.showItems, persist: persistState)
+            visibleSection.setState(.showItems, persist: persistState)
         case .alwaysHidden:
             iceBarPanel?.close()
             guard
@@ -250,15 +253,15 @@ final class MenuBarSection {
             else {
                 return
             }
-            setState(.showItems, persist: true)
-            hiddenSection.setState(.showItems, persist: true)
-            visibleSection.setState(.showItems, persist: true)
+            setState(.showItems, persist: persistState)
+            hiddenSection.setState(.showItems, persist: persistState)
+            visibleSection.setState(.showItems, persist: persistState)
         }
         startRehideChecks()
     }
 
     /// Updates this section's state with an explicit persistence intent.
-    private func setState(_ state: ControlItem.HidingState, persist: Bool) {
+    func setState(_ state: ControlItem.HidingState, persist: Bool) {
         let previousPersistence = persistsStateChanges
         persistsStateChanges = persist
         controlItem.state = state

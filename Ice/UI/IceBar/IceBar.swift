@@ -804,8 +804,9 @@ private struct IceBarContentView: View {
         let title = row.title
         Task { @MainActor in
             var revealed = false
+            var generation = 0
             if #available(macOS 27, *), let bundleID, appState.menuBarConcealer.isConcealed(bundleID) {
-                appState.menuBarConcealer.temporarilyShow(bundleID)
+                generation = appState.menuBarConcealer.temporarilyShow(bundleID)
                 revealed = true
                 // MenuBarAgent animates the item back. Pressing before it
                 // lands hits an empty accessibility tree.
@@ -817,9 +818,25 @@ private struct IceBarContentView: View {
                 _ = MenuBarItemAXDiscovery.press(pid: pid, identifier: identifier, title: title)
             }.value
             if revealed, let bundleID {
-                try? await Task.sleep(for: .seconds(12))
-                appState.menuBarConcealer.endTemporaryShow(bundleID)
+                await rehideTemporaryShow(bundleID, generation: generation)
             }
+        }
+    }
+
+    /// Waits out the temporary-show interval, then keeps waiting while a menu
+    /// is still open. Uses the same interval as the older temp-show path.
+    private func rehideTemporaryShow(_ bundleID: String, generation: Int) async {
+        let interval = appState.settingsManager.advancedSettingsManager.tempShowInterval
+        if interval > 0 {
+            try? await Task.sleep(for: .seconds(interval))
+        }
+        while !Task.isCancelled {
+            if NSEvent.pressedMouseButtons != 0 || appState.eventManager.isMenuInteractionOpen() {
+                try? await Task.sleep(for: .seconds(3))
+                continue
+            }
+            appState.menuBarConcealer.endTemporaryShow(bundleID, generation: generation)
+            return
         }
     }
 }

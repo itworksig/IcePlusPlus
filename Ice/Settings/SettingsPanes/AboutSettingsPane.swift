@@ -75,7 +75,7 @@ struct AboutSettingsPane: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Updates")
                 .font(.headline)
-            Text("Check for Updates compares this copy with the latest GitHub release. Only a higher version is offered.")
+            Text("Check for Updates compares this copy with the latest stable GitHub release. Check for Test Updates uses the latest pre-release.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -91,6 +91,10 @@ struct AboutSettingsPane: View {
             HStack {
                 Button("Check for Updates") {
                     updatesManager.checkForUpdates()
+                }
+                .disabled(updatesManager.isCheckingForUpdates)
+                Button("Check for Test Updates") {
+                    updatesManager.checkForTestUpdates()
                 }
                 .disabled(updatesManager.isCheckingForUpdates)
                 Spacer()

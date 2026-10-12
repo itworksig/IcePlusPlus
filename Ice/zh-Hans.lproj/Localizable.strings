@@ -151,6 +151,7 @@
 "The Ice Bar requires accessibility permission." = "Ice Bar 需要辅助功能权限。";
 "Ice++ Settings…" = "Ice++ 设置…";
 "Check for Updates…" = "检查更新…";
+"Check for Test Updates…" = "检查测试版更新…";
 "Quit Ice++" = "退出 Ice++";
 "Show the Hidden Section" = "显示隐藏分区";
 "Hide the Hidden Section" = "收起隐藏分区";
@@ -209,6 +210,7 @@
 
 /* About */
 "Check for Updates" = "检查更新";
+"Check for Test Updates" = "检查测试版更新";
 "Turn on automatic checks to enable automatic downloads" = "打开自动检查后才能自动下载更新";
 "Acknowledgements" = "致谢";
 "Contribute" = "参与贡献";
@@ -237,7 +239,11 @@
 "Ice++ hides menu bar items and opens them again in the Ice Bar." = "Ice++ 用来隐藏菜单栏图标，并在 Ice Bar 里再打开它们。";
 "Releases are built for Apple silicon and published on GitHub as Ice-arm64.dmg and Ice.zip." = "安装包面向 Apple 芯片，发布在 GitHub 上，文件是 Ice-arm64.dmg 和 Ice.zip。";
 "Updates" = "更新";
-"Check for Updates compares this copy with the latest GitHub release. Only a higher version is offered." = "检查更新会把这个副本和 GitHub 上的最新发布比较。只有版本更高时才会提示更新。";
+"Check for Updates compares this copy with the latest stable GitHub release. Check for Test Updates uses the latest pre-release." = "检查更新会和 GitHub 上的最新正式版比较。检查测试版更新会看最新的预发布。";
+"No test release yet. You are running %@." = "GitHub 上还没有预发布版本。当前版本是 %@。";
+"Test version %@ is now available. You are running %@." = "发现测试版 %@（当前是 %@）。";
+"A new test update is available" = "有新的测试版可用";
+"No newer test version. You are running %@." = "没有更新的测试版。当前版本是 %@。";
 "Project" = "项目";
 "GitHub Repository" = "GitHub 仓库";
 "Latest Release" = "最新发布";

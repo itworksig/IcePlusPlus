@@ -34,6 +34,10 @@ final class MenuBarManager: ObservableObject {
     /// The managed sections in the menu bar.
     private(set) var sections = [MenuBarSection]()
 
+    /// Section states from before a Command-drag reveal. Nil when no drag
+    /// reveal is in progress. Restored on mouse-up without writing defaults.
+    private var dragRevealStates: [(section: MenuBarSection, state: ControlItem.HidingState)]?
+
     /// The panel that contains the Ice Bar interface.
     let iceBarPanel: IceBarPanel
 
@@ -91,8 +95,9 @@ final class MenuBarManager: ObservableObject {
             }
             .store(in: &c)
 
+        refreshMenuBarHiddenPreference()
         if
-            let hiddenSection = section(withName: .alwaysHidden),
+            let hiddenSection = section(withName: .hidden),
             let window = hiddenSection.controlItem.window
         {
             window.publisher(for: \.frame)
@@ -100,31 +105,42 @@ final class MenuBarManager: ObservableObject {
                 .removeDuplicates()
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in
-                    guard
-                        let self,
-                        let isMenuBarHidden = Defaults.globalDomain["_HIHideMenuBar"] as? Bool
-                    else {
-                        return
-                    }
-                    isMenuBarHiddenBySystemUserDefaults = isMenuBarHidden
+                    self?.refreshMenuBarHiddenPreference()
                 }
                 .store(in: &c)
         }
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshMenuBarHiddenPreference()
+            }
+            .store(in: &c)
 
         // Handle the `focusedApp` rehide strategy.
         NSWorkspace.shared.publisher(for: \.frontmostApplication)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                if
+                guard
                     let self,
                     let appState,
+                    appState.settingsManager.generalSettingsManager.autoRehide,
                     case .focusedApp = appState.settingsManager.generalSettingsManager.rehideStrategy,
-                    let hiddenSection = section(withName: .hidden),
-                    !appState.eventManager.isMouseInsideMenuBar
-                {
-                    Task {
-                        try? await Task.sleep(for: .seconds(0.1))
-                        hiddenSection.hide(persistState: false)
+                    !appState.eventManager.isMouseInsideMenuBar,
+                    !appState.eventManager.isMenuInteractionOpen()
+                else {
+                    return
+                }
+                Task {
+                    try? await Task.sleep(for: .seconds(0.1))
+                    guard
+                        appState.settingsManager.generalSettingsManager.autoRehide,
+                        !appState.eventManager.isMouseInsideMenuBar,
+                        !appState.eventManager.isMenuInteractionOpen()
+                    else {
+                        return
+                    }
+                    for section in self.sections {
+                        section.hide(persistState: false)
                     }
                 }
             }
@@ -217,6 +233,57 @@ final class MenuBarManager: ObservableObject {
             .store(in: &c)
 
         cancellables = c
+    }
+
+    /// Reads the system "automatically hide the menu bar" preference.
+    ///
+    /// The value is sometimes a boolean and sometimes a number. This does not
+    /// depend on the always-hidden divider, which is removed when that section
+    /// is turned off.
+    private func refreshMenuBarHiddenPreference() {
+        let raw = Defaults.globalDomain["_HIHideMenuBar"]
+        let hidden: Bool
+        if let value = raw as? Bool {
+            hidden = value
+        } else if let number = raw as? NSNumber {
+            hidden = number.boolValue
+        } else {
+            hidden = false
+        }
+        isMenuBarHiddenBySystemUserDefaults = hidden
+    }
+
+    /// Reveals every section while the user Command-drags a menu bar item.
+    ///
+    /// The first call during a drag remembers the current states. Later drag
+    /// events do not overwrite that snapshot, and nothing is written to defaults.
+    func beginShowingSectionsForDrag() {
+        guard dragRevealStates == nil else {
+            return
+        }
+        dragRevealStates = sections.map { (section: $0, state: $0.controlItem.state) }
+        for section in sections {
+            section.setState(.showItems, persist: false)
+            guard
+                section.controlItem.isSectionDivider,
+                !section.controlItem.isVisible
+            else {
+                continue
+            }
+            section.controlItem.isVisible = true
+        }
+    }
+
+    /// Restores the section states from before a Command-drag.
+    func endShowingSectionsForDrag() {
+        guard let dragRevealStates else {
+            return
+        }
+        self.dragRevealStates = nil
+        for record in dragRevealStates {
+            record.section.setState(record.state, persist: false)
+            record.section.controlItem.updateStatusItem(with: record.section.controlItem.state)
+        }
     }
 
     /// Updates the ``averageColorInfo`` property with the current average color

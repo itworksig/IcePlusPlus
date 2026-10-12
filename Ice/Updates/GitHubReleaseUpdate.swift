@@ -8,6 +8,9 @@ import Foundation
 /// Numeric version from a marketing string or a `vX.Y.Z` git tag.
 struct ReleaseVersion: Comparable {
     let components: [Int]
+    /// Tokens after the first `-`, such as `beta` and `1` in `27.0.3-beta.1`.
+    /// Stable comparison ignores these. The test-update channel uses them.
+    let prereleaseIdentifiers: [String]
 
     /// Dotted numbers, without a leading `v` or a pre-release suffix.
     var display: String {
@@ -23,8 +26,13 @@ struct ReleaseVersion: Comparable {
         if body.first == "v" || body.first == "V" {
             body.removeFirst()
         }
+        let identifiers: [String]
         if let dash = body.firstIndex(of: "-") {
+            let suffix = body[body.index(after: dash)...]
+            identifiers = suffix.split(separator: ".").map(String.init).filter { !$0.isEmpty }
             body = String(body[..<dash])
+        } else {
+            identifiers = []
         }
         let parts = body.split(separator: ".")
         guard !parts.isEmpty else {
@@ -38,6 +46,7 @@ struct ReleaseVersion: Comparable {
             numbers.append(number)
         }
         components = numbers
+        prereleaseIdentifiers = identifiers
     }
 
     static func < (lhs: ReleaseVersion, rhs: ReleaseVersion) -> Bool {
@@ -52,9 +61,61 @@ struct ReleaseVersion: Comparable {
         return false
     }
 
-    /// `1.0` and `1.0.0` are the same release.
+    /// `1.0` and `1.0.0` are the same release. A `-beta` suffix does not
+    /// change this comparison; the test-update channel reads it separately.
     static func == (lhs: ReleaseVersion, rhs: ReleaseVersion) -> Bool {
         !(lhs < rhs) && !(rhs < lhs)
+    }
+
+    /// Whether this tag should replace `installed` on the test-update channel.
+    ///
+    /// A higher number wins. The same number wins when this tag is a pre-release
+    /// and the installed string is not, or when this pre-release identifier is newer.
+    func isNewerTestBuild(than installed: ReleaseVersion, installedRaw: String) -> Bool {
+        if self != installed {
+            return self > installed
+        }
+        let installedIdentifiers = ReleaseVersion(installedRaw)?.prereleaseIdentifiers ?? []
+        if installedIdentifiers.isEmpty {
+            return !prereleaseIdentifiers.isEmpty
+        }
+        return Self.prerelease(prereleaseIdentifiers, isNewerThan: installedIdentifiers)
+    }
+
+    /// Orders two pre-release tags. A higher numeric version wins, then a newer suffix.
+    func isNewerPrereleaseTag(than other: ReleaseVersion) -> Bool {
+        if self != other {
+            return self > other
+        }
+        return Self.prerelease(prereleaseIdentifiers, isNewerThan: other.prereleaseIdentifiers)
+    }
+
+    /// SemVer-style pre-release ordering. Numeric tokens compare as numbers.
+    private static func prerelease(_ lhs: [String], isNewerThan rhs: [String]) -> Bool {
+        let count = max(lhs.count, rhs.count)
+        for index in 0..<count {
+            if index >= lhs.count {
+                return false
+            }
+            if index >= rhs.count {
+                return true
+            }
+            let left = lhs[index]
+            let right = rhs[index]
+            switch (Int(left), Int(right)) {
+            case let (leftNumber?, rightNumber?) where leftNumber != rightNumber:
+                return leftNumber > rightNumber
+            case (_?, nil):
+                return false
+            case (nil, _?):
+                return true
+            default:
+                if left != right {
+                    return left > right
+                }
+            }
+        }
+        return false
     }
 }
 
@@ -67,7 +128,7 @@ struct GitHubRelease: Decodable, Sendable {
     let draft: Bool
 
     /// Release that uses the stable download names when the API is unavailable.
-    static func standardDownloads(tag: String) -> GitHubRelease? {
+    static func standardDownloads(tag: String, prerelease: Bool = false) -> GitHubRelease? {
         guard ReleaseVersion(tag) != nil else {
             return nil
         }
@@ -87,7 +148,7 @@ struct GitHubRelease: Decodable, Sendable {
                 Asset(name: GitHubUpdates.zipAssetName, browserDownloadURL: zip, size: 0),
                 Asset(name: GitHubUpdates.dmgAssetName, browserDownloadURL: dmg, size: 0),
             ],
-            prerelease: false,
+            prerelease: prerelease,
             draft: false
         )
     }
@@ -174,6 +235,15 @@ enum GitHubUpdates {
         }
     }
 
+    /// Newest GitHub pre-release, or `UpdateFailure.noRelease` when there is none.
+    static func latestPrerelease() async throws -> GitHubRelease {
+        do {
+            return try await latestPrereleaseFromAPI()
+        } catch UpdateFailure.badResponse(let code) where code == 403 || code == 429 {
+            return try await latestPrereleaseFromWebsite()
+        }
+    }
+
     private static func latestFromAPI() async throws -> GitHubRelease {
         var components = URLComponents()
         components.scheme = "https"
@@ -200,6 +270,35 @@ enum GitHubUpdates {
             throw UpdateFailure.noRelease
         }
         return release
+    }
+
+    private static func latestPrereleaseFromAPI() async throws -> GitHubRelease {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "api.github.com"
+        components.path = "/repos/\(owner)/\(repo)/releases"
+        components.queryItems = [URLQueryItem(name: "per_page", value: "30")]
+        guard let url = components.url else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("IcePlusPlus", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        if http.statusCode == 404 {
+            throw UpdateFailure.noRelease
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw UpdateFailure.badResponse(http.statusCode)
+        }
+        let releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
+        guard let newest = newestPrerelease(in: releases) else {
+            throw UpdateFailure.noRelease
+        }
+        return newest
     }
 
     /// `https://github.com/.../releases/latest` redirects to `/releases/tag/vX.Y.Z`.
@@ -233,6 +332,74 @@ enum GitHubUpdates {
         return release
     }
 
+    /// The public releases page when the API quota is spent. The first
+    /// pre-release badge in page order is the newest one GitHub shows.
+    private static func latestPrereleaseFromWebsite() async throws -> GitHubRelease {
+        guard let url = URL(string: "https://github.com/\(owner)/\(repo)/releases") else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        var request = URLRequest(url: url)
+        request.setValue("IcePlusPlus", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw UpdateFailure.badResponse(-1)
+        }
+        if http.statusCode == 404 {
+            throw UpdateFailure.noRelease
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw UpdateFailure.badResponse(http.statusCode)
+        }
+        let html = String(decoding: data, as: UTF8.self)
+        guard let tag = firstPrereleaseTag(in: html),
+              let release = GitHubRelease.standardDownloads(tag: tag, prerelease: true)
+        else {
+            throw UpdateFailure.noRelease
+        }
+        return release
+    }
+
+    private static func newestPrerelease(in releases: [GitHubRelease]) -> GitHubRelease? {
+        releases
+            .filter { $0.prerelease && !$0.draft }
+            .max { lhs, rhs in
+                guard
+                    let left = ReleaseVersion(lhs.tagName),
+                    let right = ReleaseVersion(rhs.tagName)
+                else {
+                    return false
+                }
+                if left.isNewerPrereleaseTag(than: right) {
+                    return false
+                }
+                if right.isNewerPrereleaseTag(than: left) {
+                    return true
+                }
+                return false
+            }
+    }
+
+    /// Tag href that sits in the same release block as a pre-release badge.
+    private static func firstPrereleaseTag(in html: String) -> String? {
+        let marker = "/releases/tag/"
+        var search = html.startIndex
+        while let range = html.range(of: marker, range: search..<html.endIndex) {
+            let tagStart = range.upperBound
+            let tagEnd = html[tagStart...].firstIndex { $0 == "\"" || $0 == "'" || $0 == "<" || $0 == "?" } ?? html.endIndex
+            let raw = String(html[tagStart..<tagEnd])
+            let tag = raw.removingPercentEncoding ?? raw
+            let nextTag = html.range(of: marker, range: tagEnd..<html.endIndex)?.lowerBound ?? html.endIndex
+            let limited = html.index(tagEnd, offsetBy: 500, limitedBy: html.endIndex) ?? html.endIndex
+            let windowEnd = min(nextTag, limited)
+            let window = html[tagEnd..<windowEnd]
+            if window.contains("Pre-release") || window.contains("预发布") {
+                return tag
+            }
+            search = tagEnd
+        }
+        return nil
+    }
+
     /// Zip used to install, then the arm64 disk image, then any other zip or disk image.
     static func preferredAsset(in release: GitHubRelease) -> GitHubRelease.Asset? {
         let assets = release.assets
@@ -252,7 +419,8 @@ enum GitHubUpdates {
     static func downloadApp(
         from release: GitHubRelease,
         expectedBundleIdentifier: String,
-        newerThan installed: ReleaseVersion
+        newerThan installed: ReleaseVersion,
+        allowSameVersion: Bool = false
     ) async throws -> URL {
         guard let asset = preferredAsset(in: release) else {
             throw UpdateFailure.missingAsset
@@ -273,7 +441,8 @@ enum GitHubUpdates {
             try validate(
                 app: app,
                 expectedBundleIdentifier: expectedBundleIdentifier,
-                newerThan: installed
+                newerThan: installed,
+                allowSameVersion: allowSameVersion
             )
             return app
         } catch {
@@ -377,13 +546,14 @@ enum GitHubUpdates {
     private static func validate(
         app: URL,
         expectedBundleIdentifier: String,
-        newerThan installed: ReleaseVersion
+        newerThan installed: ReleaseVersion,
+        allowSameVersion: Bool
     ) throws {
         guard let bundle = Bundle(url: app),
               bundle.bundleIdentifier == expectedBundleIdentifier,
               let raw = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               let remote = ReleaseVersion(raw),
-              remote > installed
+              remote > installed || (allowSameVersion && remote == installed)
         else {
             throw UpdateFailure.invalidBundle
         }
