@@ -614,33 +614,103 @@ extension EventManager {
 
     /// AX hit test for a menu bar item at the given CoreGraphics point.
     ///
-    /// `AXGroup` covers the MenuBarAgent/ControlCenter cluster;
-    /// `AXMenuBarItem`/`AXButton`/`AXImage` cover third-party extras, excluding
-    /// the frontmost app's own menus. An open menu over the bar (`AXMenu` /
-    /// `AXMenuItem`) also counts: the user is interacting with it, so the spot
-    /// is not empty space. Anything without AX permission, or any other role
-    /// (bare `AXMenuBar` background, wallpaper, …), reads as empty.
+    /// The hit often lands on a child (`AXStaticText` for the clock, a custom
+    /// role inside a third-party extra) or on the frontmost app's own status
+    /// item. Those used to read as empty menu bar space, so a right-click
+    /// opened Ice++'s menu on top of the other icon. Walk a few ancestors,
+    /// and treat the measured trailing status strip as occupied.
     private func isMouseInsideAXMenuBarItem(at point: CGPoint) -> Bool {
+        if isMouseInsideTrailingStatusArea(point) {
+            return true
+        }
+        guard var element = try? systemWideElement.elementAtPosition(Float(point.x), Float(point.y)) else {
+            return false
+        }
+        let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        for _ in 0..<8 {
+            let role: String? = try? element.attribute("AXRole")
+            switch role {
+            case "AXMenu", "AXMenuItem":
+                return true
+            case "AXGroup", "AXPopUpButton", "AXCheckBox", "AXSlider", "AXValueIndicator":
+                if let frame: CGRect = try? element.attribute("AXFrame"), isCompactStatusFrame(frame) {
+                    return true
+                }
+            case "AXMenuBarItem", "AXButton", "AXImage", "AXStaticText":
+                if countsAsStatusItem(element, frontmost: frontmost) {
+                    return true
+                }
+            case "AXMenuBar":
+                return false
+            default:
+                if let frame: CGRect = try? element.attribute("AXFrame"), isCompactStatusFrame(frame) {
+                    return true
+                }
+            }
+            guard let parent: UIElement = try? element.attribute("AXParent") else {
+                return false
+            }
+            element = parent
+        }
+        return false
+    }
+
+    /// Whether `element` is a status icon rather than a title in the application menus.
+    ///
+    /// The frontmost app owns both. A short element to the right of those menus
+    /// is that app's own menu bar icon.
+    private func countsAsStatusItem(_ element: UIElement, frontmost: pid_t?) -> Bool {
+        guard let pid: pid_t = try? element.pid() else {
+            return true
+        }
+        if pid != frontmost {
+            return true
+        }
+        guard let frame: CGRect = try? element.attribute("AXFrame") else {
+            return false
+        }
+        return isCompactStatusFrame(frame)
+    }
+
+    /// An icon-sized rectangle in the menu bar, to the right of the application menus.
+    private func isCompactStatusFrame(_ frame: CGRect) -> Bool {
         guard
-            let element = try? systemWideElement.elementAtPosition(Float(point.x), Float(point.y)),
-            let role: String = try? element.attribute("AXRole")
+            frame.width > 0, frame.height > 0,
+            frame.height <= 40, frame.width <= 160,
+            let screen = bestScreen
         else {
             return false
         }
-        switch role {
-        case "AXGroup", "AXMenu", "AXMenuItem":
-            return true
-        case "AXMenuBarItem", "AXButton", "AXImage":
-            guard let pid: pid_t = try? element.pid() else {
-                // A status-looking element we can't attribute is more likely
-                // an icon than empty space, and a missed toggle beats a
-                // mid-interaction collapse.
-                return true
-            }
-            return pid != NSWorkspace.shared.frontmostApplication?.processIdentifier
-        default:
+        let bounds = CGDisplayBounds(screen.displayID)
+        guard frame.minY <= bounds.minY + 12, frame.maxX <= bounds.maxX + 4 else {
             return false
         }
+        if let appMenu = appState?.menuBarManager.getApplicationMenuFrame(for: screen.displayID) {
+            return frame.minX > appMenu.maxX + 8
+        }
+        return frame.midX > bounds.midX
+    }
+
+    /// The painted trailing status cluster. Icons Accessibility misses still
+    /// live here, so a click in this strip is not empty menu bar space.
+    private func isMouseInsideTrailingStatusArea(_ point: CGPoint) -> Bool {
+        guard
+            let screen = bestScreen,
+            let width = MenuBarOverlayPanelContentView.currentTrailingVisibleWidth(for: screen.displayID),
+            width > 24,
+            width < screen.frame.width * 0.85
+        else {
+            return false
+        }
+        let bounds = CGDisplayBounds(screen.displayID)
+        let barHeight = max(screen.frame.maxY - screen.visibleFrame.maxY, 24)
+        let strip = CGRect(
+            x: bounds.maxX - width - 8,
+            y: bounds.minY,
+            width: width + 8,
+            height: barHeight
+        )
+        return strip.contains(point)
     }
 
     /// A Boolean value that indicates whether the mouse pointer is within

@@ -419,7 +419,7 @@ final class MenuBarManager: ObservableObject {
         let settingsItem = NSMenuItem(
             title: String(localized: "Ice++ Settings…"),
             action: #selector(AppDelegate.openSettingsWindow),
-            keyEquivalent: ","
+            keyEquivalent: ""
         )
         menu.addItem(settingsItem)
 
