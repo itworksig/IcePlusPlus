@@ -32,8 +32,8 @@ enum ControlItemImage: Codable, Hashable {
         case .symbol(let name):
             let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
             image?.isTemplate = true
-            image?.size = CGSize(width: Self.menuBarGlyph, height: Self.menuBarGlyph)
-            return image
+            let side = Self.menuBarGlyph
+            return image?.resized(to: CGSize(width: side, height: side))
         case .catalog(let name):
             // Read the PNG in the bundle. A named lookup can keep an older
             // cube from a previous asset catalog.
@@ -92,7 +92,7 @@ extension ControlItemImage {
                     return true
                 }
                 image.isTemplate = true
-                return image
+                return image.resized(to: size)
             }
 
             /// A large chevron.

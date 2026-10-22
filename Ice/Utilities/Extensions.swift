@@ -427,12 +427,39 @@ extension NSImage {
     ///
     /// - Parameter size: The size to resize the current image to.
     func resized(to size: CGSize) -> NSImage {
-        let resizedImage = NSImage(size: size, flipped: false) { bounds in
-            self.draw(in: bounds)
-            return true
+        // A drawing-handler image keeps its size but never produces pixels
+        // when macOS 27 snapshots the status item out of process, so the bar
+        // holds an empty slot. Bake a bitmap instead.
+        let wasTemplate = isTemplate
+        isTemplate = false
+        defer { isTemplate = wasTemplate }
+        let pixelsWide = max(1, Int((size.width * 2).rounded()))
+        let pixelsHigh = max(1, Int((size.height * 2).rounded()))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            isTemplate = wasTemplate
+            return self
         }
-        resizedImage.isTemplate = isTemplate
-        return resizedImage
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: size)
+        image.addRepresentation(rep)
+        image.isTemplate = wasTemplate
+        return image
     }
 }
 
