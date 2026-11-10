@@ -35,6 +35,21 @@ final class GeneralSettingsManager: ObservableObject {
     /// The location where the Ice Bar appears.
     @Published var iceBarLocation: IceBarLocation = .dynamic
 
+    /// Corner radius of the Ice Bar, independent of the menu bar shape.
+    @Published var iceBarCornerRadius: Double = 14
+
+    /// Whether the Ice Bar tints its glass.
+    @Published var iceBarTintEnabled = false
+
+    /// Ice Bar tint as RRGGBB.
+    @Published var iceBarTintHex = "FFFFFF"
+
+    /// Whether a second color fades across the Ice Bar.
+    @Published var iceBarGradientEnabled = false
+
+    /// End color of the Ice Bar gradient, as RRGGBB.
+    @Published var iceBarGradientEndHex = "8E8E93"
+
     /// A Boolean value that indicates whether the hidden section
     /// should be shown when the mouse pointer clicks in an empty
     /// area of the menu bar.
@@ -49,6 +64,9 @@ final class GeneralSettingsManager: ObservableObject {
     /// should be shown or hidden when the user scrolls in the
     /// menu bar.
     @Published var showOnScroll = true
+
+    /// While the hidden section is open, conceal apps that normally stay visible.
+    @Published var hideShownWhenRevealing = false
 
     /// The offset to apply to the menu bar item spacing and padding.
     @Published var itemSpacingOffset: Double = 0
@@ -97,6 +115,7 @@ final class GeneralSettingsManager: ObservableObject {
         Defaults.ifPresent(key: .showOnClick, assign: &showOnClick)
         Defaults.ifPresent(key: .showOnHover, assign: &showOnHover)
         Defaults.ifPresent(key: .showOnScroll, assign: &showOnScroll)
+        Defaults.ifPresent(key: .hideShownWhenRevealing, assign: &hideShownWhenRevealing)
         Defaults.ifPresent(key: .itemSpacingOffset, assign: &itemSpacingOffset)
         Defaults.ifPresent(key: .autoRehide, assign: &autoRehide)
         Defaults.ifPresent(key: .rehideInterval, assign: &rehideInterval)
@@ -106,6 +125,11 @@ final class GeneralSettingsManager: ObservableObject {
                 iceBarLocation = location
             }
         }
+        Defaults.ifPresent(key: .iceBarCornerRadius, assign: &iceBarCornerRadius)
+        Defaults.ifPresent(key: .iceBarTintEnabled, assign: &iceBarTintEnabled)
+        Defaults.ifPresent(key: .iceBarTintHex, assign: &iceBarTintHex)
+        Defaults.ifPresent(key: .iceBarGradientEnabled, assign: &iceBarGradientEnabled)
+        Defaults.ifPresent(key: .iceBarGradientEndHex, assign: &iceBarGradientEndHex)
         Defaults.ifPresent(key: .rehideStrategy) { rawValue in
             if let strategy = RehideStrategy(rawValue: rawValue) {
                 rehideStrategy = strategy
@@ -180,6 +204,22 @@ final class GeneralSettingsManager: ObservableObject {
             }
             .store(in: &c)
 
+        $iceBarCornerRadius
+            .sink { Defaults.set($0, forKey: .iceBarCornerRadius) }
+            .store(in: &c)
+        $iceBarTintEnabled
+            .sink { Defaults.set($0, forKey: .iceBarTintEnabled) }
+            .store(in: &c)
+        $iceBarTintHex
+            .sink { Defaults.set($0, forKey: .iceBarTintHex) }
+            .store(in: &c)
+        $iceBarGradientEnabled
+            .sink { Defaults.set($0, forKey: .iceBarGradientEnabled) }
+            .store(in: &c)
+        $iceBarGradientEndHex
+            .sink { Defaults.set($0, forKey: .iceBarGradientEndHex) }
+            .store(in: &c)
+
         $showOnClick
             .receive(on: DispatchQueue.main)
             .sink { showOnClick in
@@ -198,6 +238,13 @@ final class GeneralSettingsManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { showOnScroll in
                 Defaults.set(showOnScroll, forKey: .showOnScroll)
+            }
+            .store(in: &c)
+
+        $hideShownWhenRevealing
+            .sink { enabled in
+                Defaults.set(enabled, forKey: .hideShownWhenRevealing)
+                IceCommands.refreshReveal()
             }
             .store(in: &c)
 

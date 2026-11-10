@@ -1,0 +1,16 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "ice-plusplus",
+  "title": "Ice++",
+  "description": "Control the Ice++ menu bar from Raycast.",
+  "icon": "icon.png",
+  "author": "itworksig",
+  "platforms": ["macOS"],
+  "categories": ["System"],
+  "commands": [
+    { "name": "focus", "title": "Toggle Focus Mode", "description": "Hide or restore the whole menu bar.", "mode": "no-view" },
+    { "name": "show-hidden", "title": "Show Hidden Items", "description": "Show the hidden menu bar section.", "mode": "no-view" },
+    { "name": "hide-hidden", "title": "Hide Hidden Items", "description": "Hide the hidden menu bar section.", "mode": "no-view" },
+    { "name": "ice-bar", "title": "Show Ice Bar", "description": "Show the Ice Bar at the mouse.", "mode": "no-view" }
+  ]
+}

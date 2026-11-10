@@ -18,6 +18,14 @@ final class IceBarPanel: NSPanel {
     /// and instead of the right edge when the Ice icon window cannot be found.
     private var anchorX: CGFloat?
 
+    /// The "show at the mouse" hotkey pins this open to the pointer.
+    var placeAtMouse = false
+
+    /// Last measured center of the Ice icon, used when a later read misses it.
+    private var lastIceIconMidX: CGFloat?
+
+    private var keyMonitor: Any?
+
     private lazy var colorManager = IceBarColorManager(iceBarPanel: self)
 
     private var cancellables = Set<AnyCancellable>()
@@ -122,11 +130,11 @@ final class IceBarPanel: NSPanel {
 
             switch iceBarLocation {
             case .dynamic:
+                if placeAtMouse {
+                    return getOrigin(for: .mousePointer)
+                }
                 if #available(macOS 27, *) {
-                    // Pin the trailing edge under the menu bar. Centering on
-                    // the click put the bar under the clock, then every icon
-                    // that loaded shoved it sideways.
-                    return CGPoint(x: screen.frame.maxX - frame.width - 4, y: originY)
+                    return originUnderIceIcon(on: screen, originY: originY)
                 }
                 if appState.eventManager.isMouseInsideEmptyMenuBarSpace {
                     return getOrigin(for: .mousePointer)
@@ -149,7 +157,7 @@ final class IceBarPanel: NSPanel {
                 return CGPoint(x: (pointerX - frame.width / 2).clamped(to: lowerBound...upperBound), y: originY)
             case .iceIcon:
                 if #available(macOS 27, *) {
-                    return CGPoint(x: screen.frame.maxX - frame.width - 4, y: originY)
+                    return originUnderIceIcon(on: screen, originY: originY)
                 }
                 let lowerBound = screen.frame.minX
                 let upperBound = screen.frame.maxX - frame.width
@@ -171,6 +179,29 @@ final class IceBarPanel: NSPanel {
         }
 
         setFrameOrigin(getOrigin(for: appState.settingsManager.generalSettingsManager.iceBarLocation))
+    }
+
+    /// Centers the bar on the Ice icon. The X axis matches between Accessibility
+    /// and AppKit, so the icon's midX is the bar's midX. Width changes keep
+    /// that center instead of sliding the bar toward the clock.
+    private func originUnderIceIcon(on screen: NSScreen, originY: CGFloat) -> CGPoint {
+        let margin: CGFloat = 4
+        let lower = screen.frame.minX + margin
+        let upper = max(lower, screen.frame.maxX - frame.width - margin)
+        if let measured = MenuBarItemAXDiscovery.iceIconFrame()?.midX
+            ?? compactIconMidX(appState?.menuBarManager.section(withName: .visible)?.controlItem.window?.frame) {
+            lastIceIconMidX = measured
+        }
+        let mid = lastIceIconMidX ?? (screen.frame.maxX - 220)
+        let x = (mid - frame.width / 2).clamped(to: lower...upper)
+        return CGPoint(x: x, y: originY)
+    }
+
+    private func compactIconMidX(_ frame: CGRect?) -> CGFloat? {
+        guard let frame, frame.width > 8, frame.width < 80, frame.midX > 1 else {
+            return nil
+        }
+        return frame.midX
     }
 
     func show(section: MenuBarSection.Name, on screen: NSScreen) async {
@@ -213,13 +244,34 @@ final class IceBarPanel: NSPanel {
         colorManager.updateAllProperties(with: frame, screen: screen)
 
         orderFrontRegardless()
+        makeKey()
+        if keyMonitor == nil {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.window === self else {
+                    return event
+                }
+                let code = event.keyCode
+                guard [36, 53, 123, 124].contains(code) else {
+                    return event
+                }
+                NotificationCenter.default.post(name: .iceBarNavigate, object: NSNumber(value: code))
+                return nil
+            }
+        }
     }
+
+    override var canBecomeKey: Bool { true }
 
     override func close() {
         super.close()
         contentView = nil
         currentSection = nil
         anchorX = nil
+        placeAtMouse = false
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
         appState?.navigationState.isIceBarPresented = false
     }
 }
@@ -331,6 +383,8 @@ private struct IceBarContentView: View {
     @State private var axRows = [AXRowItem]()
     @State private var hasAXPermission = MenuBarItemAXDiscovery.isTrusted()
     @State private var isLoadingAXRows = false
+    @State private var query = ""
+    @State private var selectedID: String?
 
     let screen: NSScreen
     let section: MenuBarSection.Name
@@ -443,21 +497,35 @@ private struct IceBarContentView: View {
 
     var body: some View {
         if #available(macOS 26, *), itemManager.isItemDiscoveryUnavailable {
-            // Bartender Bar: liquid glass, independent of the menu bar tint,
-            // hanging just under the bar with its trailing edge fixed.
+            let style = appState.settingsManager.generalSettingsManager
+            let radius = CGFloat(style.iceBarCornerRadius)
             content
                 .frame(height: iconSide + 6)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background { GlassBarBackground(cornerRadius: 16) }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
-                .padding(.top, 6)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 18)
+                .padding(.vertical, 5)
+                .background {
+                    GlassBarBackground(
+                        cornerRadius: radius,
+                        tint: style.iceBarTintEnabled ? NSColor(hex: style.iceBarTintHex) : nil
+                    )
+                }
+                .overlay {
+                    if style.iceBarGradientEnabled,
+                       let start = Color(hex: style.iceBarTintHex),
+                       let end = Color(hex: style.iceBarGradientEndHex) {
+                        LinearGradient(colors: [start, end], startPoint: .leading, endPoint: .trailing)
+                            .opacity(0.4)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .padding(.top, 4)
                 .frame(maxWidth: imageCache.screen?.frame.width)
                 .fixedSize()
                 .onFrameChange(update: $frame)
+                .onReceive(NotificationCenter.default.publisher(for: .iceBarNavigate)) { note in
+                    handleBarKey((note.object as? NSNumber)?.uint16Value ?? 0)
+                }
         } else {
             ZStack {
                 content
@@ -587,8 +655,19 @@ private struct IceBarContentView: View {
         } else {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    ForEach(displayedRows) { row in
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search", text: $query)
+                        .textFieldStyle(.plain)
+                        .frame(width: 88)
+                    ForEach(filteredRows) { row in
                         axRowView(row)
+                            .background {
+                                if selectedID == row.id {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(.primary.opacity(0.15))
+                                }
+                            }
                     }
                 }
             }
@@ -624,6 +703,45 @@ private struct IceBarContentView: View {
     /// does not sit on a spinner while Accessibility walks every app.
     private var displayedRows: [AXRowItem] {
         axRows.isEmpty ? layoutRows : axRows
+    }
+
+    private var filteredRows: [AXRowItem] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return displayedRows
+        }
+        return displayedRows.filter {
+            $0.displayName.localizedCaseInsensitiveContains(trimmed)
+                || ($0.bundleID?.localizedCaseInsensitiveContains(trimmed) ?? false)
+        }
+    }
+
+    private func handleBarKey(_ code: UInt16) {
+        switch code {
+        case 53:
+            closePanel()
+        case 123:
+            moveSelection(by: -1)
+        case 124:
+            moveSelection(by: 1)
+        case 36:
+            let row = filteredRows.first { $0.id == selectedID } ?? filteredRows.first
+            if let row {
+                press(row)
+            }
+        default:
+            break
+        }
+    }
+
+    private func moveSelection(by delta: Int) {
+        let rows = filteredRows
+        guard !rows.isEmpty else {
+            return
+        }
+        let current = rows.firstIndex { $0.id == selectedID } ?? 0
+        let next = min(max(current + delta, 0), rows.count - 1)
+        selectedID = rows[next].id
     }
 
     @ViewBuilder
@@ -1017,11 +1135,14 @@ private struct IceBarItemClickView: NSViewRepresentable {
 @available(macOS 26.0, *)
 private struct GlassBarBackground: NSViewRepresentable {
     var cornerRadius: CGFloat
+    var tint: NSColor?
 
     func makeNSView(context: Context) -> NSGlassEffectView {
         let view = NSGlassEffectView()
         view.style = .regular
         view.cornerRadius = cornerRadius
+        view.tintColor = tint
+        view.shadow = nil
         if #available(macOS 27, *) {
             view.effectIsInteractive = true
         }
@@ -1030,6 +1151,39 @@ private struct GlassBarBackground: NSViewRepresentable {
 
     func updateNSView(_ view: NSGlassEffectView, context: Context) {
         view.cornerRadius = cornerRadius
+        view.tintColor = tint
+        view.shadow = nil
+    }
+}
+
+extension Notification.Name {
+    static let iceBarNavigate = Notification.Name("IceBarNavigate")
+}
+
+extension NSColor {
+    convenience init?(hex: String) {
+        var text = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("#") {
+            text.removeFirst()
+        }
+        guard text.count == 6, let value = Int(text, radix: 16) else {
+            return nil
+        }
+        self.init(
+            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
+extension Color {
+    init?(hex: String) {
+        guard let color = NSColor(hex: hex) else {
+            return nil
+        }
+        self.init(nsColor: color)
     }
 }
 

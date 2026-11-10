@@ -179,6 +179,18 @@ extension Defaults {
 
         case iceBarLocation = "IceBarLocation"
         case iceBarPinnedLocation = "IceBarPinnedLocation"
+        case iceBarCornerRadius = "IceBarCornerRadius"
+        case iceBarTintEnabled = "IceBarTintEnabled"
+        case iceBarTintHex = "IceBarTintHex"
+        case iceBarGradientEnabled = "IceBarGradientEnabled"
+        case iceBarGradientEndHex = "IceBarGradientEndHex"
+        case menuBarPresets = "MenuBarPresets"
+        case menuBarAutomations = "MenuBarAutomations"
+        case relieveNotch = "RelieveNotch"
+        case hideShownWhenRevealing = "HideShownWhenRevealing"
+        case menuBarCustomItems = "MenuBarCustomItems"
+        case showMenuBarItemImages = "ShowMenuBarItemImages"
+        case showAppIconBadges = "ShowAppIconBadges"
 
         // MARK: Migration
 

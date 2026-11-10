@@ -258,6 +258,7 @@ final class MenuBarSection {
             visibleSection.setState(.showItems, persist: persistState)
         }
         startRehideChecks()
+        IceCommands.refreshReveal()
     }
 
     /// Updates this section's state with an explicit persistence intent.
@@ -311,6 +312,7 @@ final class MenuBarSection {
         }
         appState.allowShowOnHover()
         stopRehideChecks()
+        IceCommands.refreshReveal()
     }
 
     /// Toggles the visibility of the section.

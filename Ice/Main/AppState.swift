@@ -49,6 +49,15 @@ final class AppState: ObservableObject {
     /// because a stored property cannot itself be marked unavailable.
     private(set) lazy var menuBarConcealer = MenuBarConcealer27(appState: self)
 
+    /// Presets, automations, and notch relief.
+    private(set) lazy var menuBarBehaviors = MenuBarBehaviors(appState: self)
+
+    /// Widgets, groups, and spacers added by the user.
+    private(set) lazy var menuBarCustomItems = MenuBarCustomItems(appState: self)
+
+    /// Captured menu bar item images for the layout page.
+    private(set) lazy var menuBarSnapshots = MenuBarSnapshots()
+
     /// Model for app-wide navigation.
     let navigationState = AppNavigationState()
 
@@ -209,6 +218,7 @@ final class AppState: ObservableObject {
         // settings before creating menu bar sections avoids a double
         // updateStatusItem/add-remove cycle at boot.
         settingsManager.performSetup()
+        menuBarBehaviors.performSetup()
         configureCancellables()
         // Only stop checking the required permissions once they are granted;
         // if the user skipped while some are still missing, keep the timer so we
@@ -222,6 +232,11 @@ final class AppState: ObservableObject {
         if #available(macOS 27, *) {
             menuBarConcealer.performSetup()
         }
+        IceCommands.appState = self
+        menuBarCustomItems.performSetup()
+        menuBarSnapshots.performSetup()
+        IceCommands.refreshReveal()
+        MenuBarConfigurationArchive.backupIfStale()
         appearanceManager.performSetup()
         eventManager.performSetup()
         itemManager.performSetup()

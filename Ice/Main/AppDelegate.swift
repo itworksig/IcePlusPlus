@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Assign the delegate to the shared app state.
         appState.assignAppDelegate(self)
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleIceAppleEvent(_:withReplyEvent:)),
+            forEventClass: 0x49636550,
+            andEventID: 0x49636543
+        )
 
         // Allow the app to set the cursor in the background.
         appState.setsCursorInBackground = true
@@ -57,9 +63,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        IceCommands.endFocus()
         if #available(macOS 27, *) {
             appState?.menuBarConcealer.releaseAll()
         }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            IceCommands.handle(url)
+        }
+    }
+
+    @objc func handleIceAppleEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        let command = event.paramDescriptor(forKeyword: AEKeyword(0x2D2D2D2D))?.stringValue ?? ""
+        IceCommands.handle(command: command)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

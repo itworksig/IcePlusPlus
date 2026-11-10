@@ -19,6 +19,9 @@ struct SettingsWindow: Scene {
                     appState.assignSettingsWindow(window)
                 }
                 .frame(minWidth: 825, minHeight: 500)
+                .onOpenURL { url in
+                    IceCommands.handle(url)
+                }
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 900, height: 625)

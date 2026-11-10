@@ -379,7 +379,7 @@ final class ControlItem {
         case .alwaysHidden:
             button.setAccessibilityIdentifier("IceAlwaysHiddenDivider")
         case .iceIcon:
-            break
+            button.setAccessibilityIdentifier("IceIcon")
         }
     }
 

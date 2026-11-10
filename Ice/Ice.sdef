@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Ice++">
+    <suite name="Ice" code="IceP" description="Commands for the menu bar.">
+        <command name="do command" code="IceC" description="Runs focus, show-hidden, hide-hidden, ice-bar, or preset:Name.">
+            <direct-parameter type="text" description="The command text."/>
+        </command>
+    </suite>
+</dictionary>

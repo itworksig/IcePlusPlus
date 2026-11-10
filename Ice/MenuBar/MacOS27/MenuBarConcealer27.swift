@@ -40,6 +40,8 @@ final class MenuBarConcealer27 {
     /// until this list is refreshed, even when it is not meant to be concealed.
     private var appliedAllow = [String]()
     private var temporarilyShown = Set<String>()
+    /// Apps concealed for focus mode, reveal, or a group, without changing the saved layout.
+    private var extraConcealment = Set<String>()
     private var temporaryShowGeneration = [String: Int]()
     private var isReleased = false
 
@@ -121,6 +123,12 @@ final class MenuBarConcealer27 {
         update()
     }
 
+    /// Replaces the saved layout and applies it. Used by presets.
+    func replaceLayout(_ raw: [String: Int]) {
+        layout = raw.compactMapValues(Section.init(rawValue:))
+        update()
+    }
+
     /// Remembers which section an app belongs to and applies it.
     func setSection(_ section: Section, for bundleID: String) {
         guard isConcealable(bundleID) else {
@@ -156,6 +164,16 @@ final class MenuBarConcealer27 {
             return
         }
         temporarilyShown.remove(bundleID)
+        update()
+    }
+
+    /// Conceals these apps in addition to the saved layout.
+    func setExtraConcealment(_ bundleIDs: Set<String>) {
+        let filtered = Set(bundleIDs.filter(isConcealable))
+        guard filtered != extraConcealment else {
+            return
+        }
+        extraConcealment = filtered
         update()
     }
 
@@ -212,6 +230,7 @@ final class MenuBarConcealer27 {
             }
             conceal.insert(bundleID)
         }
+        conceal.formUnion(extraConcealment.filter(isConcealable))
         conceal.subtract(temporarilyShown)
         return conceal
     }

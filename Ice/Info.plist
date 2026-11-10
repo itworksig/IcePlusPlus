@@ -8,5 +8,22 @@
 	<string>5giXQMfuJxsXCpuCn1XxL2IFkBoSiNMiP4rNwAanT7A=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>Ice.sdef</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Ice++ uses your location when a menu bar automation you created depends on where you are or which Wi-Fi network you joined.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Ice++</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>iceplusplus</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

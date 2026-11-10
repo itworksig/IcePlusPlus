@@ -106,6 +106,7 @@ struct GeneralSettingsPane: View {
                 showOnClick
                 showOnHover
                 showOnScroll
+                hideShownWhenRevealing
             }
             IceSection {
                 autoRehideOptions
@@ -301,6 +302,15 @@ struct GeneralSettingsPane: View {
                 Text("The Ice Bar is centered below the Ice icon")
             }
         }
+        Slider(value: manager.bindings.iceBarCornerRadius, in: 0...24) {
+            Text("Corner radius")
+        }
+        Toggle("Tint", isOn: manager.bindings.iceBarTintEnabled)
+        TextField("Tint color", text: manager.bindings.iceBarTintHex)
+            .frame(maxWidth: 120)
+        Toggle("Gradient", isOn: manager.bindings.iceBarGradientEnabled)
+        TextField("Gradient end", text: manager.bindings.iceBarGradientEndHex)
+            .frame(maxWidth: 120)
     }
 
     @ViewBuilder
@@ -319,6 +329,11 @@ struct GeneralSettingsPane: View {
     private var showOnScroll: some View {
         Toggle("Show on scroll", isOn: manager.bindings.showOnScroll)
             .annotation("Scroll or swipe in the menu bar to toggle hidden menu bar items")
+    }
+
+    private var hideShownWhenRevealing: some View {
+        Toggle("Hide shown icons while revealing hidden ones", isOn: manager.bindings.hideShownWhenRevealing)
+            .annotation("Clock and Control Center stay. This waits while the Ice Bar is on, because that bar does not expand the menu bar.")
     }
 
     @ViewBuilder

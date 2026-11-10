@@ -322,10 +322,43 @@ enum MenuBarItemAXDiscovery {
         }
         // swiftlint:disable:next force_cast
         let barElement = bar as! AXUIElement
+        let found = frames(under: barElement, identifiers: ["IceHiddenDivider", "IceAlwaysHiddenDivider"])
+        return (found["IceHiddenDivider"], found["IceAlwaysHiddenDivider"])
+    }
+
+    /// On-screen frame of the Ice icon. Nil when the lookup hits the parked spacer.
+    static func iceIconFrame() -> CGRect? {
+        guard isTrusted() else {
+            return nil
+        }
+        let axApp = AXUIElementCreateApplication(NSRunningApplication.current.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, 1)
+        var bar: AnyObject?
+        guard
+            AXUIElementCopyAttributeValue(axApp, "AXExtrasMenuBar" as CFString, &bar) == .success,
+            let bar,
+            CFGetTypeID(bar) == AXUIElementGetTypeID()
+        else {
+            return nil
+        }
+        // swiftlint:disable:next force_cast
+        let found = frames(under: bar as! AXUIElement, identifiers: ["IceIcon"])["IceIcon"]
+        guard
+            let found,
+            found.width > 8, found.width < 80,
+            found.height > 8, found.height < 48,
+            found.minY < 80, found.minX > 1
+        else {
+            return nil
+        }
+        return found
+    }
+
+    private static func frames(under bar: AXUIElement, identifiers: Set<String>) -> [String: CGRect] {
         var visited = 0
         var found = [String: CGRect]()
-        collectDividerFrames(from: barElement, depth: maxWalkDepth, visited: &visited, into: &found)
-        return (found["IceHiddenDivider"], found["IceAlwaysHiddenDivider"])
+        collectDividerFrames(from: bar, depth: maxWalkDepth, visited: &visited, identifiers: identifiers, into: &found)
+        return found
     }
 
     /// Whether an AX frame looks like a real divider in the menubar.
@@ -348,6 +381,7 @@ enum MenuBarItemAXDiscovery {
         from element: AXUIElement,
         depth: Int,
         visited: inout Int,
+        identifiers: Set<String>,
         into result: inout [String: CGRect]
     ) {
         guard depth > 0, visited < maxElementsVisited else {
@@ -363,7 +397,7 @@ enum MenuBarItemAXDiscovery {
 
         if
             let identifier = stringAttribute("AXIdentifier" as CFString, of: element),
-            identifier == "IceHiddenDivider" || identifier == "IceAlwaysHiddenDivider",
+            identifiers.contains(identifier),
             result[identifier] == nil,
             let frame = frame(of: element)
         {
@@ -378,7 +412,7 @@ enum MenuBarItemAXDiscovery {
             return
         }
         for child in elements {
-            collectDividerFrames(from: child, depth: depth - 1, visited: &visited, into: &result)
+            collectDividerFrames(from: child, depth: depth - 1, visited: &visited, identifiers: identifiers, into: &result)
         }
     }
 

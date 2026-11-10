@@ -3,6 +3,8 @@
 //  Ice
 //
 
+import Cocoa
+
 enum HotkeyAction: String, Codable, CaseIterable {
     // Menu Bar Sections
     case toggleHiddenSection = "ToggleHiddenSection"
@@ -12,6 +14,8 @@ enum HotkeyAction: String, Codable, CaseIterable {
     case enableIceBar = "EnableIceBar"
     case showSectionDividers = "ShowSectionDividers"
     case toggleApplicationMenus = "ToggleApplicationMenus"
+    case showIceBarAtMouse = "ShowIceBarAtMouse"
+    case focusMode = "FocusMode"
 
     @MainActor
     func perform(appState: AppState) async {
@@ -40,6 +44,10 @@ enum HotkeyAction: String, Codable, CaseIterable {
             appState.settingsManager.advancedSettingsManager.showSectionDividers.toggle()
         case .toggleApplicationMenus:
             appState.menuBarManager.toggleApplicationMenus()
+        case .showIceBarAtMouse:
+            await IceCommands.showIceBarAtMouse()
+        case .focusMode:
+            IceCommands.toggleFocus()
         }
     }
 }

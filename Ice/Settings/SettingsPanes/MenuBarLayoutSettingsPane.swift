@@ -40,6 +40,7 @@ struct MenuBarLayoutSettingsPane: View {
     /// Generation for the missing-icon retry: a new scan bumps it to cancel
     /// the previous retry, so only the latest scan keeps retrying.
     @State private var iconRetryGeneration = 0
+    @State private var snapshotRevision = 0
 
     private var totalCount: Int {
         sections.values.reduce(0) { $0 + $1.count }
@@ -86,6 +87,11 @@ struct MenuBarLayoutSettingsPane: View {
 
                 Spacer()
 
+                Toggle("Item images", isOn: appState.menuBarSnapshots.bindings.showItemImages)
+                Toggle("App badges", isOn: appState.menuBarSnapshots.bindings.showAppBadges)
+                Button("Recapture") {
+                    appState.menuBarSnapshots.recapture()
+                }
                 Button {
                     Task {
                         await refresh()
@@ -123,6 +129,7 @@ struct MenuBarLayoutSettingsPane: View {
                         ForEach(visibleMetas, id: \.kind) { meta in
                             sectionView(meta: meta, items: sections[meta.kind] ?? [])
                         }
+                        MenuBarCustomItemEditor(model: appState.menuBarCustomItems)
                         if #available(macOS 27, *) {
                             Text("Drag an app into Hidden or Always Hidden. Ice++ hides that app when the section is collapsed, and the Ice Bar opens it. System icons stay in the menu bar.")
                                 .font(.caption)
@@ -144,6 +151,9 @@ struct MenuBarLayoutSettingsPane: View {
             // opening the tab shows icons right away, no Refresh tap needed.
             applySnapshotFromCache()
             await refresh()
+        }
+        .onReceive(appState.menuBarSnapshots.objectWillChange) { _ in
+            snapshotRevision += 1
         }
         .onReceive(appState.itemManager.$itemCache) { _ in
             // When the cache changes (background timer, newly opened app,
@@ -214,7 +224,13 @@ struct MenuBarLayoutSettingsPane: View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
                 Group {
-                    if let systemName = item.systemImage {
+                    if appState.menuBarSnapshots.showItemImages,
+                       let shot = appState.menuBarSnapshots.image(for: item.bundleID, frame: item.quartzFrame) {
+                        Image(nsImage: shot)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 40, height: 30)
+                    } else if let systemName = item.systemImage {
                         Image(systemName: systemName)
                             .font(.system(size: 17))
                             .frame(width: 40, height: 30)
@@ -232,7 +248,14 @@ struct MenuBarLayoutSettingsPane: View {
                 }
                 // System icons (com.apple.* bundles) get an extra Apple logo badge
                 // at the top-right corner for distinction, as in the mock.
-                if item.isSystem {
+                if appState.menuBarSnapshots.showAppBadges, let icon = item.appIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 12, height: 12)
+                        .background(.regularMaterial, in: Circle())
+                        .offset(x: 5, y: -5)
+                } else if item.isSystem {
                     Image(systemName: "apple.logo")
                         .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(.primary)
@@ -256,6 +279,7 @@ struct MenuBarLayoutSettingsPane: View {
             )
         )
         .opacity(pending ? 0.7 : 1)
+        .animation(nil, value: snapshotRevision)
         .overlay {
             // Blue outline on drag hover: releasing inserts before this icon.
             RoundedRectangle(cornerRadius: 10, style: .continuous)

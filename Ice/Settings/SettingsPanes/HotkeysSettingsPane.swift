@@ -22,6 +22,8 @@ struct HotkeysSettingsPane: View {
                 hotkeyRecorder(forAction: .enableIceBar)
                 hotkeyRecorder(forAction: .showSectionDividers)
                 hotkeyRecorder(forAction: .toggleApplicationMenus)
+                hotkeyRecorder(forAction: .showIceBarAtMouse)
+                hotkeyRecorder(forAction: .focusMode)
             }
         }
     }
@@ -41,6 +43,10 @@ struct HotkeysSettingsPane: View {
                     Text("Show section dividers")
                 case .toggleApplicationMenus:
                     Text("Toggle application menus")
+                case .showIceBarAtMouse:
+                    Text("Show the Ice Bar at the mouse")
+                case .focusMode:
+                    Text("Focus mode")
                 }
             }
         }

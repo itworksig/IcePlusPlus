@@ -25,7 +25,6 @@ struct AboutSettingsPane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 header
-                summary
                 updates
                 project
             }
@@ -61,24 +60,10 @@ struct AboutSettingsPane: View {
     }
 
     @ViewBuilder
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Ice++ hides menu bar items and opens them again in the Ice Bar.")
-            Text("Releases are built for Apple silicon and published on GitHub as Ice-arm64.dmg and Ice.zip.")
-                .foregroundStyle(.secondary)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    @ViewBuilder
     private var updates: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Updates")
                 .font(.headline)
-            Text("Check for Updates compares this copy with the latest stable GitHub release. Check for Test Updates uses the latest pre-release.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             Toggle(
                 "Automatically check for updates",
                 isOn: updatesManager.bindings.automaticallyChecksForUpdates
