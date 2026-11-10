@@ -31,8 +31,10 @@ jobs:
         && !contains(github.event.head_commit.message, '[skip ci]')
         && !contains(github.event.head_commit.message, '[ci skip]')
       )
-    # Building with the macOS 26 SDK or newer. macos-26 runners are arm64.
-    runs-on: macos-26
+    # The app is built with the macOS 27 SDK. The standard macos-26 arm64
+    # pool has been cancelling jobs before a runner is assigned, so this
+    # uses the Xcode 27 image, which is arm64 and has that SDK.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,13 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           ls -d /Applications/Xcode*.app
-          if [ -d "/Applications/Xcode_26.6.app" ]; then
-            XCODE="/Applications/Xcode_26.6.app"
-          else
-            XCODE=$(ls -d /Applications/Xcode_2[6-9]*.app /Applications/Xcode_[3-9][0-9]*.app 2>/dev/null | sort -V | tail -1 || true)
-          fi
+          XCODE=$(ls -d /Applications/Xcode_27*.app /Applications/Xcode_[3-9][0-9]*.app 2>/dev/null | sort -V | tail -1 || true)
           if [ -z "${XCODE:-}" ] || [ ! -d "$XCODE" ]; then
-            echo "No Xcode 26 or newer found on runner"
+            echo "No Xcode 27 or newer found on runner"
             exit 1
           fi
           echo "Selecting $XCODE"
