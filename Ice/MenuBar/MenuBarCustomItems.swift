@@ -209,11 +209,23 @@ struct MenuBarCustomItemEditor: View {
             }
             ForEach(model.items) { item in
                 HStack {
-                    Text(item.title.isEmpty ? item.kind.rawValue : item.title)
+                    if item.title.isEmpty {
+                        Text(customKindTitle(item.kind))
+                    } else {
+                        Text(item.title)
+                    }
                     Spacer()
                     Button("Delete") { model.delete(item) }
                 }
             }
+        }
+    }
+
+    private func customKindTitle(_ kind: MenuBarCustomItem.Kind) -> LocalizedStringKey {
+        switch kind {
+        case .widget: "Widget"
+        case .group: "Group"
+        case .spacer: "Spacer"
         }
     }
 

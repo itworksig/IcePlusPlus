@@ -192,7 +192,7 @@ private struct MenuBarBehaviorSettings: View {
     var body: some View {
         IceSection("System icons") {
             ForEach(SystemMenuExtra.allCases) { item in
-                Toggle(item.title, isOn: Binding(
+                Toggle(LocalizedStringKey(item.title), isOn: Binding(
                     get: { SystemMenuExtraStore.isShown(item) },
                     set: { SystemMenuExtraStore.setShown($0, item) }
                 ))
@@ -223,7 +223,7 @@ private struct MenuBarBehaviorSettings: View {
         IceSection("Automations") {
             Picker("When", selection: $draftKind) {
                 ForEach(MenuBarAutomation.Kind.allCases, id: \.self) { kind in
-                    Text(kind.rawValue).tag(kind)
+                    Text(kindTitle(kind)).tag(kind)
                 }
             }
             Picker("Then", selection: $draftAction) {
@@ -284,7 +284,7 @@ private struct MenuBarBehaviorSettings: View {
                         get: { rule.enabled },
                         set: { behaviors.setAutomationEnabled(rule, enabled: $0) }
                     ))
-                    Text(label(for: rule))
+                    ruleLabel(rule)
                     Spacer()
                     Button("Delete") { behaviors.deleteAutomation(rule) }
                 }
@@ -321,24 +321,38 @@ private struct MenuBarBehaviorSettings: View {
         )
     }
 
-    private func label(for rule: MenuBarAutomation) -> String {
+    private func kindTitle(_ kind: MenuBarAutomation.Kind) -> LocalizedStringKey {
+        switch kind {
+        case .frontmostApp: "Frontmost app"
+        case .batteryBelow: "Battery level"
+        case .schedule: "Time of day"
+        case .wifi: "Wi-Fi network"
+        case .location: "Current location"
+        case .date: "Date"
+        case .unplugged: "Unplugged"
+        case .script: "Script"
+        }
+    }
+
+    @ViewBuilder
+    private func ruleLabel(_ rule: MenuBarAutomation) -> some View {
         switch rule.kind {
         case .frontmostApp:
-            return rule.bundleID
+            Text(rule.bundleID)
         case .batteryBelow:
-            return "Battery ≤ \(rule.batteryPercent)%"
+            Text("Battery ≤ \(rule.batteryPercent)%")
         case .schedule:
-            return "\(rule.startHour):00–\(rule.endHour):00"
+            Text("\(rule.startHour):00–\(rule.endHour):00")
         case .wifi:
-            return rule.wifiName
+            Text(rule.wifiName)
         case .location:
-            return "Location"
+            Text("Current location")
         case .date:
-            return "Date"
+            Text("Date")
         case .unplugged:
-            return "On battery"
+            Text("On battery")
         case .script:
-            return rule.scriptPath
+            Text(rule.scriptPath)
         }
     }
 }
