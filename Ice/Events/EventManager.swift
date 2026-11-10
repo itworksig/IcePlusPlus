@@ -16,6 +16,9 @@ final class EventManager {
     /// Storage for internal observers.
     private var cancellables = Set<AnyCancellable>()
 
+    /// Trailing clock and Control Center band, so a click there is not empty space.
+    private var cachedSystemExtra: (display: CGDirectDisplayID, frame: CGRect, date: Date)?
+
     /// Cached menu bar window frames per display.
     ///
     /// `isMouseInsideMenuBar` runs on every mouse-move/scroll event, and the
@@ -156,6 +159,7 @@ final class EventManager {
         )
         .sink { [weak self] _ in
             self?.cachedMenuBarFrames.removeAll()
+            self?.cachedSystemExtra = nil
         }
         .store(in: &c)
 
@@ -167,6 +171,7 @@ final class EventManager {
                 .merge(with: appState.$isActiveSpaceFullscreen.mapToVoid())
                 .sink { [weak self] _ in
                     self?.cachedMenuBarFrames.removeAll()
+                    self?.cachedSystemExtra = nil
                 }
                 .store(in: &c)
         }
@@ -198,8 +203,17 @@ extension EventManager {
     // MARK: Handle Show On Click
 
     private func handleShowOnClick() {
+        guard let appState else {
+            return
+        }
+        // The clock and Control Center sit past the status icons. On macOS 27
+        // a click there used to look like empty menu bar, so the Ice Bar
+        // opened under the time and slid around as its icons loaded.
+        if let point = MouseCursor.locationCoreGraphics, isMouseInsideSystemMenuExtra(at: point) {
+            appState.menuBarManager.iceBarPanel.close()
+            return
+        }
         guard
-            let appState,
             appState.settingsManager.generalSettingsManager.showOnClick,
             isMouseInsideEmptyMenuBarSpace
         else {
@@ -214,6 +228,9 @@ extension EventManager {
             // state lagged at mouse-down, or opened a menu since. Never toggle
             // into an interaction.
             guard !isMenuOpenGlobally(), isMouseInsideEmptyMenuBarSpace else {
+                return
+            }
+            if let point = MouseCursor.locationCoreGraphics, self.isMouseInsideSystemMenuExtra(at: point) {
                 return
             }
 
@@ -620,7 +637,7 @@ extension EventManager {
     /// opened Ice++'s menu on top of the other icon. Walk a few ancestors,
     /// and treat the measured trailing status strip as occupied.
     private func isMouseInsideAXMenuBarItem(at point: CGPoint) -> Bool {
-        if isMouseInsideTrailingStatusArea(point) {
+        if isMouseInsideTrailingStatusArea(point) || isMouseInsideSystemMenuExtra(at: point) {
             return true
         }
         guard var element = try? systemWideElement.elementAtPosition(Float(point.x), Float(point.y)) else {
@@ -711,6 +728,118 @@ extension EventManager {
             height: barHeight
         )
         return strip.contains(point)
+    }
+
+    /// The clock and Control Center, in CoreGraphics coordinates.
+    ///
+    /// The date is wider than an icon, and on macOS 27 the hit is often the
+    /// bare menu bar, so the compact-icon check treated a click on the time
+    /// as empty space.
+    private func isMouseInsideSystemMenuExtra(at point: CGPoint) -> Bool {
+        guard let screen = bestScreen else {
+            return false
+        }
+        return systemExtraFrame(on: screen).contains(point)
+    }
+
+    /// Trailing run of system menu extras, from the right edge leftward until
+    /// a third-party or Ice icon.
+    private func systemExtraFrame(on screen: NSScreen) -> CGRect {
+        if let cached = cachedSystemExtra,
+           cached.display == screen.displayID,
+           Date().timeIntervalSince(cached.date) < 0.4 {
+            return cached.frame
+        }
+        let frame = measureSystemExtraFrame(on: screen)
+        cachedSystemExtra = (screen.displayID, frame, Date())
+        return frame
+    }
+
+    private func measureSystemExtraFrame(on screen: NSScreen) -> CGRect {
+        let bounds = CGDisplayBounds(screen.displayID)
+        let barHeight = max(screen.frame.maxY - screen.visibleFrame.maxY, 24)
+        let empty = CGRect(x: bounds.maxX, y: bounds.minY, width: 0, height: barHeight)
+        guard bounds.width > 40 else {
+            return empty
+        }
+        let y = Float(bounds.minY + min(16, barHeight / 2))
+        var left = bounds.maxX
+        var x = bounds.maxX - 6
+        let stop = bounds.midX
+        var sawSystem = false
+        while x > stop {
+            guard let element = try? systemWideElement.elementAtPosition(Float(x), y) else {
+                x -= 12
+                continue
+            }
+            if let frame: CGRect = try? element.attribute("AXFrame"), frame.width > bounds.width * 0.5 {
+                x -= 12
+                continue
+            }
+            if isSystemMenuExtraElement(element, displayBounds: bounds) {
+                sawSystem = true
+                if let frame: CGRect = try? element.attribute("AXFrame"), frame.width > 0 {
+                    left = min(left, frame.minX)
+                    x = frame.minX - 4
+                } else {
+                    x -= 12
+                }
+                continue
+            }
+            if let frame: CGRect = try? element.attribute("AXFrame"),
+               frame.height > 0, frame.height <= 44,
+               frame.minY <= bounds.minY + 14,
+               frame.width < bounds.width * 0.5 {
+                left = max(frame.maxX, bounds.minX)
+                break
+            }
+            x -= 12
+        }
+        if !sawSystem {
+            // The clock is often just the menu bar, with no child frame. A
+            // click on the time still has to stay out of the Ice Bar. Only
+            // reserve that band when the right edge itself is not an app icon.
+            let probeX = Float(bounds.maxX - 8)
+            if let element = try? systemWideElement.elementAtPosition(probeX, y) {
+                let frame: CGRect? = try? element.attribute("AXFrame")
+                let bareBar = frame.map { $0.width > bounds.width * 0.5 } ?? false
+                if bareBar || isSystemMenuExtraElement(element, displayBounds: bounds) {
+                    let reserved: CGFloat = 300
+                    return CGRect(
+                        x: bounds.maxX - reserved,
+                        y: bounds.minY,
+                        width: reserved,
+                        height: barHeight + 4
+                    )
+                }
+            }
+            return empty
+        }
+        left = min(left, bounds.maxX)
+        return CGRect(x: left, y: bounds.minY, width: max(0, bounds.maxX - left), height: barHeight + 4)
+    }
+
+    /// Control Center, the menu bar clock, and Notification Center's menu extra.
+    private func isSystemMenuExtraElement(_ element: UIElement, displayBounds: CGRect) -> Bool {
+        if let pid: pid_t = try? element.pid(),
+           let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+           bundleID == "com.apple.controlcenter"
+            || bundleID == "com.apple.systemuiserver"
+            || bundleID == "com.apple.notificationcenterui" {
+            if let frame: CGRect = try? element.attribute("AXFrame") {
+                if frame.width > displayBounds.width * 0.5 || frame.height > 80 {
+                    return false
+                }
+            }
+            return true
+        }
+        guard let frame: CGRect = try? element.attribute("AXFrame") else {
+            return false
+        }
+        let hugsRight = frame.maxX >= displayBounds.maxX - 12
+        let inBar = frame.height > 0 && frame.height <= 44 && frame.minY <= displayBounds.minY + 14
+        let notTheWholeBar = frame.width > 24 && frame.width < displayBounds.width * 0.45
+        return hugsRight && inBar && notTheWholeBar
     }
 
     /// A Boolean value that indicates whether the mouse pointer is within

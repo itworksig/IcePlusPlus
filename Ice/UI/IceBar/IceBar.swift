@@ -32,7 +32,9 @@ final class IceBarPanel: NSPanel {
         self.appState = appState
         self.title = "Ice Bar"
         self.titlebarAppearsTransparent = true
-        self.isMovableByWindowBackground = true
+        // A free-floating window slides out from under the menu bar as soon as
+        // the icon row changes width. Bartender's bar stays put.
+        self.isMovableByWindowBackground = false
         self.allowsToolTipsWhenApplicationIsInactive = true
         self.isFloatingPanel = true
         self.animationBehavior = .none
@@ -120,6 +122,12 @@ final class IceBarPanel: NSPanel {
 
             switch iceBarLocation {
             case .dynamic:
+                if #available(macOS 27, *) {
+                    // Pin the trailing edge under the menu bar. Centering on
+                    // the click put the bar under the clock, then every icon
+                    // that loaded shoved it sideways.
+                    return CGPoint(x: screen.frame.maxX - frame.width - 4, y: originY)
+                }
                 if appState.eventManager.isMouseInsideEmptyMenuBarSpace {
                     return getOrigin(for: .mousePointer)
                 }
@@ -140,6 +148,9 @@ final class IceBarPanel: NSPanel {
 
                 return CGPoint(x: (pointerX - frame.width / 2).clamped(to: lowerBound...upperBound), y: originY)
             case .iceIcon:
+                if #available(macOS 27, *) {
+                    return CGPoint(x: screen.frame.maxX - frame.width - 4, y: originY)
+                }
                 let lowerBound = screen.frame.minX
                 let upperBound = screen.frame.maxX - frame.width
 
@@ -357,9 +368,8 @@ private struct IceBarContentView: View {
         return menuBarHeight
     }
 
-    /// Ice Bar app icons, in points. Larger than the 18pt menu-bar cube.
-    /// The bar grows with this side so the icons are not clipped.
-    private var iconSide: CGFloat { 28 }
+    /// Ice Bar app icons, in points. Menu-bar sized inside the glass shelf.
+    private var iconSide: CGFloat { 22 }
 
     private var clipShape: AnyInsettableShape {
         barShape
@@ -432,28 +442,46 @@ private struct IceBarContentView: View {
     }
 
     var body: some View {
-        ZStack {
+        if #available(macOS 26, *), itemManager.isItemDiscoveryUnavailable {
+            // Bartender Bar: liquid glass, independent of the menu bar tint,
+            // hanging just under the bar with its trailing edge fixed.
             content
-                .frame(height: contentHeight)
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
-                .layoutBarStyle(appState: appState, averageColorInfo: colorManager.colorInfo, tintOpacity: barTintOpacity, useLiveBlur: isSplitPill)
-                .foregroundStyle(colorManager.colorInfo?.color.brightness ?? 0 > 0.67 ? .black : .white)
-                .overlay(splitBorderOverlay)
-                .clipShape(clipShape)
-                .shadow(color: barShadowColor, radius: barShadowRadius)
+                .frame(height: iconSide + 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background { GlassBarBackground(cornerRadius: 16) }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+                .padding(.top, 6)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 18)
+                .frame(maxWidth: imageCache.screen?.frame.width)
+                .fixedSize()
+                .onFrameChange(update: $frame)
+        } else {
+            ZStack {
+                content
+                    .frame(height: contentHeight)
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.vertical, verticalPadding)
+                    .layoutBarStyle(appState: appState, averageColorInfo: colorManager.colorInfo, tintOpacity: barTintOpacity, useLiveBlur: isSplitPill)
+                    .foregroundStyle(colorManager.colorInfo?.color.brightness ?? 0 > 0.67 ? .black : .white)
+                    .overlay(splitBorderOverlay)
+                    .clipShape(clipShape)
+                    .shadow(color: barShadowColor, radius: barShadowRadius)
 
-            if configuration.current.hasBorder, !isSplitPill {
-                clipShape
-                    .inset(by: configuration.current.borderWidth / 2)
-                    .stroke(lineWidth: configuration.current.borderWidth)
-                    .foregroundStyle(Color(cgColor: configuration.current.borderColor))
+                if configuration.current.hasBorder, !isSplitPill {
+                    clipShape
+                        .inset(by: configuration.current.borderWidth / 2)
+                        .stroke(lineWidth: configuration.current.borderWidth)
+                        .foregroundStyle(Color(cgColor: configuration.current.borderColor))
+                }
             }
+            .padding(5)
+            .frame(maxWidth: imageCache.screen?.frame.width)
+            .fixedSize()
+            .onFrameChange(update: $frame)
         }
-        .padding(5)
-        .frame(maxWidth: imageCache.screen?.frame.width)
-        .fixedSize()
-        .onFrameChange(update: $frame)
     }
 
     @ViewBuilder
@@ -558,7 +586,7 @@ private struct IceBarContentView: View {
                 .padding(.horizontal, 10)
         } else {
             ScrollView(.horizontal) {
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     ForEach(displayedRows) { row in
                         axRowView(row)
                     }
@@ -981,6 +1009,28 @@ private struct IceBarItemClickView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) { }
+}
+
+// MARK: - Glass bar
+
+/// Liquid-glass shelf used by the Ice Bar on macOS 26 and later.
+@available(macOS 26.0, *)
+private struct GlassBarBackground: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let view = NSGlassEffectView()
+        view.style = .regular
+        view.cornerRadius = cornerRadius
+        if #available(macOS 27, *) {
+            view.effectIsInteractive = true
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSGlassEffectView, context: Context) {
+        view.cornerRadius = cornerRadius
+    }
 }
 
 // MARK: - Logger
