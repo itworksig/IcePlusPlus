@@ -14,15 +14,26 @@ on:
 jobs:
   swiftlint:
     if: '!github.event.pull_request.merged'
-    runs-on: ubuntu-latest
+    # 0.65.1's Linux binary targets Ubuntu 22.04. ubuntu-latest no longer
+    # runs it, so the install step failed before any file was linted.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0.3"
       - name: Install SwiftLint 0.65.1
         run: |
-          SWIFTLINT_VERSION=0.65.1
-          curl -fsSL -o /tmp/swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip"
-          unzip -q -o /tmp/swiftlint.zip -d /tmp/swiftlint
-          echo "/tmp/swiftlint" >> "$GITHUB_PATH"
-          /tmp/swiftlint/swiftlint version
+          set -euo pipefail
+          curl -fL --retry 5 --retry-all-errors -o /tmp/swiftlint.zip \
+            "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_amd64.zip"
+          rm -rf /tmp/swiftlint-bin
+          mkdir -p /tmp/swiftlint-bin
+          unzip -q -o /tmp/swiftlint.zip -d /tmp/swiftlint-bin
+          bin=$(find /tmp/swiftlint-bin -type f -name swiftlint | head -1)
+          test -n "$bin"
+          chmod +x "$bin"
+          sudo mv "$bin" /usr/local/bin/swiftlint
+          swiftlint version
       - name: Run SwiftLint
         run: swiftlint --strict

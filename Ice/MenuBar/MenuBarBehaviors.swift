@@ -16,6 +16,38 @@ struct MenuBarPreset: Codable, Identifiable, Equatable {
     var layout: [String: Int]
     /// System extras that stay off the menu bar.
     var hiddenSystem: [String]
+    /// When set, this preset is applied while the connected displays match.
+    var displaySignature: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, layout, hiddenSystem, displaySignature
+    }
+
+    init(id: UUID, name: String, layout: [String: Int], hiddenSystem: [String], displaySignature: String? = nil) {
+        self.id = id
+        self.name = name
+        self.layout = layout
+        self.hiddenSystem = hiddenSystem
+        self.displaySignature = displaySignature
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        layout = try container.decode([String: Int].self, forKey: .layout)
+        hiddenSystem = try container.decode([String].self, forKey: .hiddenSystem)
+        displaySignature = try container.decodeIfPresent(String.self, forKey: .displaySignature)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(layout, forKey: .layout)
+        try container.encode(hiddenSystem, forKey: .hiddenSystem)
+        try container.encodeIfPresent(displaySignature, forKey: .displaySignature)
+    }
 }
 
 struct MenuBarAutomation: Codable, Identifiable, Equatable {
@@ -55,8 +87,10 @@ struct MenuBarAutomation: Codable, Identifiable, Equatable {
     /// Calendar weekdays, Sunday = 1. Empty matches any day.
     var weekdays: [Int] = []
     var scriptPath: String = ""
+    var startMinute: Int = 0
+    var endMinute: Int = 0
 
-    init(id: UUID, enabled: Bool, kind: Kind, bundleID: String, batteryPercent: Int, startHour: Int, endHour: Int, showHidden: Bool, action: Action = .showHidden, presetID: UUID? = nil, wifiName: String = "", latitude: Double = 0, longitude: Double = 0, radiusMeters: Double = 200, month: Int = 0, day: Int = 0, weekdays: [Int] = [], scriptPath: String = "") {
+    init(id: UUID, enabled: Bool, kind: Kind, bundleID: String, batteryPercent: Int, startHour: Int, endHour: Int, showHidden: Bool, action: Action = .showHidden, presetID: UUID? = nil, wifiName: String = "", latitude: Double = 0, longitude: Double = 0, radiusMeters: Double = 200, month: Int = 0, day: Int = 0, weekdays: [Int] = [], scriptPath: String = "", startMinute: Int = 0, endMinute: Int = 0) {
         self.id = id
         self.enabled = enabled
         self.kind = kind
@@ -75,6 +109,8 @@ struct MenuBarAutomation: Codable, Identifiable, Equatable {
         self.day = day
         self.weekdays = weekdays
         self.scriptPath = scriptPath
+        self.startMinute = startMinute
+        self.endMinute = endMinute
     }
 
     init(from decoder: Decoder) throws {
@@ -97,7 +133,14 @@ struct MenuBarAutomation: Codable, Identifiable, Equatable {
         day = try container.decodeIfPresent(Int.self, forKey: .day) ?? 0
         weekdays = try container.decodeIfPresent([Int].self, forKey: .weekdays) ?? []
         scriptPath = try container.decodeIfPresent(String.self, forKey: .scriptPath) ?? ""
+        startMinute = try container.decodeIfPresent(Int.self, forKey: .startMinute) ?? 0
+        endMinute = try container.decodeIfPresent(Int.self, forKey: .endMinute) ?? 0
     }
+}
+
+struct CapturedPlace: Equatable {
+    var latitude: Double
+    var longitude: Double
 }
 
 /// Saved layouts, show/hide rules, and moving icons out from under the notch.
@@ -105,7 +148,19 @@ struct MenuBarAutomation: Codable, Identifiable, Equatable {
 final class MenuBarBehaviors: ObservableObject {
     @Published var presets: [MenuBarPreset] = []
     @Published var automations: [MenuBarAutomation] = []
-    @Published var relieveNotch = true
+    @Published var relieveNotch = false
+    @Published var capturedPlace: CapturedPlace?
+
+    func useCurrentLocation() {
+        captureLocation { [weak self] place in
+            Task { @MainActor in
+                self?.capturedPlace = CapturedPlace(
+                    latitude: place.coordinate.latitude,
+                    longitude: place.coordinate.longitude
+                )
+            }
+        }
+    }
 
     private weak var appState: AppState?
     private var cancellables = Set<AnyCancellable>()
@@ -133,6 +188,7 @@ final class MenuBarBehaviors: ObservableObject {
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                self?.applyMatchingDisplayPreset()
                 self?.relieveNotchIfNeeded()
             }
             .store(in: &c)
@@ -144,21 +200,82 @@ final class MenuBarBehaviors: ObservableObject {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
+            self.applyMatchingDisplayPreset()
             self.relieveNotchIfNeeded()
             self.evaluateAutomations()
         }
     }
 
-    func saveCurrentLayout(named name: String) {
+    func saveCurrentLayout(named name: String, forCurrentDisplays: Bool = false) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let appState else {
+        guard !trimmed.isEmpty else {
             return
         }
         let stored = Defaults.object(forKey: .macOS27Layout) as? [String: Int] ?? [:]
         let hidden = SystemMenuExtra.allCases.filter { !SystemMenuExtraStore.isShown($0) }.map(\.rawValue)
-        presets.append(MenuBarPreset(id: UUID(), name: trimmed, layout: stored, hiddenSystem: hidden))
+        presets.append(MenuBarPreset(
+            id: UUID(),
+            name: trimmed,
+            layout: stored,
+            hiddenSystem: hidden,
+            displaySignature: forCurrentDisplays ? Self.currentDisplaySignature() : nil
+        ))
         persist()
-        _ = appState
+    }
+
+    func currentNetworkName() -> String? {
+        if sensors.hasStarted {
+            sensors.refreshSSID()
+        } else {
+            sensors.start {}
+        }
+        return sensors.ssid
+    }
+
+    func captureLocation(_ handler: @escaping (CLLocation) -> Void) {
+        sensors.captureNextLocation(handler)
+    }
+
+    /// Runs one automation immediately from the Ice Bar.
+    func run(_ rule: MenuBarAutomation) {
+        guard let section = appState?.menuBarManager.section(withName: .hidden) else {
+            return
+        }
+        switch rule.action {
+        case .applyPreset:
+            if let id = rule.presetID, let preset = presets.first(where: { $0.id == id }) {
+                apply(preset)
+            }
+        case .showHidden:
+            if rule.showHidden {
+                section.show()
+            } else {
+                section.hide()
+            }
+        }
+    }
+
+    static func currentDisplaySignature() -> String {
+        NSScreen.screens.map { screen in
+            let frame = screen.frame
+            return "\(Int(frame.width))x\(Int(frame.height))@\(Int(frame.minX)),\(Int(frame.minY))"
+        }
+        .sorted()
+        .joined(separator: "|")
+    }
+
+    private var appliedDisplaySignature: String?
+
+    private func applyMatchingDisplayPreset() {
+        let signature = Self.currentDisplaySignature()
+        guard signature != appliedDisplaySignature else {
+            return
+        }
+        appliedDisplaySignature = signature
+        guard let preset = presets.first(where: { $0.displaySignature == signature }) else {
+            return
+        }
+        apply(preset)
     }
 
     func apply(_ preset: MenuBarPreset) {
@@ -219,7 +336,11 @@ final class MenuBarBehaviors: ObservableObject {
            let decoded = try? JSONDecoder().decode([MenuBarAutomation].self, from: data) {
             automations = decoded
         }
-        Defaults.ifPresent(key: .relieveNotch, assign: &relieveNotch)
+        if Defaults.bool(forKey: .relieveNotchUserSet) {
+            Defaults.ifPresent(key: .relieveNotch, assign: &relieveNotch)
+        } else {
+            relieveNotch = false
+        }
     }
 
     private func persist() {
@@ -234,6 +355,7 @@ final class MenuBarBehaviors: ObservableObject {
 
     func updateRelieveNotch(_ enabled: Bool) {
         relieveNotch = enabled
+        Defaults.set(true, forKey: .relieveNotchUserSet)
         persist()
         if enabled {
             relieveNotchIfNeeded()
@@ -315,14 +437,17 @@ final class MenuBarBehaviors: ObservableObject {
             }
             return percent <= rule.batteryPercent
         case .schedule:
-            let hour = Calendar.current.component(.hour, from: Date())
-            if rule.startHour == rule.endHour {
+            let parts = Calendar.current.dateComponents([.hour, .minute], from: Date())
+            let now = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+            let start = rule.startHour * 60 + rule.startMinute
+            let end = rule.endHour * 60 + rule.endMinute
+            if start == end {
                 return true
             }
-            if rule.startHour < rule.endHour {
-                return hour >= rule.startHour && hour < rule.endHour
+            if start < end {
+                return now >= start && now < end
             }
-            return hour >= rule.startHour || hour < rule.endHour
+            return now >= start || now < end
         case .wifi:
             guard !rule.wifiName.isEmpty, let ssid = sensors.ssid else {
                 return false
@@ -423,17 +548,19 @@ final class MenuBarBehaviors: ObservableObject {
         }
         let apps = NSWorkspace.shared.runningApplications
         let items = MenuBarItemAXDiscovery.discoverItems(in: apps)
+        let layout = Defaults.object(forKey: .macOS27Layout) as? [String: Int] ?? [:]
         for item in items {
-            guard let frame = item.axFrame, notches.contains(where: { $0.intersects(frame) }) else {
+            guard
+                let frame = item.axFrame,
+                let bundleID = item.bundleID,
+                !bundleID.hasPrefix("com.apple."),
+                bundleID != Bundle.main.bundleIdentifier,
+                notches.contains(where: { $0.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
+                layout[bundleID] == nil
+            else {
                 continue
             }
-            if let extra = SystemMenuExtra.matching(identifier: item.identifier) {
-                SystemMenuExtraStore.setShown(false, extra)
-                continue
-            }
-            if let bundleID = item.bundleID {
-                appState.menuBarConcealer.setSection(.hidden, for: bundleID)
-            }
+            appState.menuBarConcealer.setSection(.hidden, for: bundleID)
         }
     }
 
@@ -452,6 +579,7 @@ final class MenuBarBehaviors: ObservableObject {
 private final class MenuBarSensors: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var started = false
+    var hasStarted: Bool { started }
     private var onUpdate: (() -> Void)?
     private(set) var location: CLLocation?
     private(set) var ssid: String?
@@ -469,14 +597,36 @@ private final class MenuBarSensors: NSObject, CLLocationManagerDelegate {
         refreshSSID()
     }
 
+    func captureNextLocation(_ handler: @escaping (CLLocation) -> Void) {
+        onLocation = handler
+        guard started else {
+            start {}
+            return
+        }
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+        if let location {
+            onLocation = nil
+            handler(location)
+        }
+    }
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         location = locations.last
+        let place = location
+        let once = onLocation
+        onLocation = nil
         Task { @MainActor in
+            if let place {
+                once?(place)
+            }
             self.onUpdate?()
         }
     }
 
-    private func refreshSSID() {
+    func refreshSSID() {
         ssid = CWWiFiClient.shared().interface()?.ssid()
     }
+
+    private var onLocation: ((CLLocation) -> Void)?
 }

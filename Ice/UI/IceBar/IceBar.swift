@@ -251,7 +251,7 @@ final class IceBarPanel: NSPanel {
                     return event
                 }
                 let code = event.keyCode
-                guard [36, 53, 123, 124].contains(code) else {
+                guard [36, 53, 123, 124, 125, 126].contains(code) else {
                     return event
                 }
                 NotificationCenter.default.post(name: .iceBarNavigate, object: NSNumber(value: code))
@@ -649,7 +649,7 @@ private struct IceBarContentView: View {
                 .foregroundStyle(.link)
             }
             .padding(.horizontal, 10)
-        } else if displayedRows.isEmpty {
+        } else if displayedRows.isEmpty && barCommands.isEmpty {
             Text("Unable to display menu bar items")
                 .padding(.horizontal, 10)
         } else {
@@ -660,6 +660,21 @@ private struct IceBarContentView: View {
                     TextField("Search", text: $query)
                         .textFieldStyle(.plain)
                         .frame(width: 88)
+                    ForEach(barCommands) { command in
+                        Button {
+                            run(command)
+                        } label: {
+                            Label(command.title, systemImage: command.systemImage)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .background {
+                            if selectedID == command.id {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(.primary.opacity(0.15))
+                            }
+                        }
+                    }
                     ForEach(filteredRows) { row in
                         axRowView(row)
                             .background {
@@ -716,17 +731,80 @@ private struct IceBarContentView: View {
         }
     }
 
+    private struct BarCommand: Identifiable {
+        enum Kind {
+            case preset(MenuBarPreset)
+            case automation(MenuBarAutomation)
+        }
+
+        let id: String
+        let title: String
+        let systemImage: String
+        let kind: Kind
+    }
+
+    /// Presets and automations whose names match the search.
+    private var barCommands: [BarCommand] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return []
+        }
+        let behaviors = appState.menuBarBehaviors
+        let presets = behaviors.presets.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmed)
+        }.map {
+            BarCommand(id: "preset:\($0.id.uuidString)", title: $0.name, systemImage: "rectangle.3.group", kind: .preset($0))
+        }
+        let rules = behaviors.automations.filter { rule in
+            commandTitle(rule).localizedCaseInsensitiveContains(trimmed)
+        }.map {
+            BarCommand(id: "auto:\($0.id.uuidString)", title: commandTitle($0), systemImage: "bolt", kind: .automation($0))
+        }
+        return presets + rules
+    }
+
+    private func commandTitle(_ rule: MenuBarAutomation) -> String {
+        switch rule.kind {
+        case .frontmostApp:
+            return NSRunningApplication.runningApplications(withBundleIdentifier: rule.bundleID).first?.localizedName ?? rule.bundleID
+        case .wifi:
+            return rule.wifiName
+        case .script:
+            return (rule.scriptPath as NSString).lastPathComponent
+        case .schedule:
+            return String(format: "%d:%02d–%d:%02d", rule.startHour, rule.startMinute, rule.endHour, rule.endMinute)
+        default:
+            return String(localized: "Automation")
+        }
+    }
+
+    private func run(_ command: BarCommand) {
+        switch command.kind {
+        case .preset(let preset):
+            appState.menuBarBehaviors.apply(preset)
+        case .automation(let rule):
+            appState.menuBarBehaviors.run(rule)
+        }
+        closePanel()
+    }
+
+    private var selectableIDs: [String] {
+        barCommands.map(\.id) + filteredRows.map(\.id)
+    }
+
     private func handleBarKey(_ code: UInt16) {
         switch code {
         case 53:
             closePanel()
-        case 123:
+        case 123, 126:
             moveSelection(by: -1)
-        case 124:
+        case 124, 125:
             moveSelection(by: 1)
         case 36:
-            let row = filteredRows.first { $0.id == selectedID } ?? filteredRows.first
-            if let row {
+            let target = selectedID ?? selectableIDs.first
+            if let command = barCommands.first(where: { $0.id == target }) {
+                run(command)
+            } else if let row = filteredRows.first(where: { $0.id == target }) {
                 press(row)
             }
         default:
@@ -735,13 +813,13 @@ private struct IceBarContentView: View {
     }
 
     private func moveSelection(by delta: Int) {
-        let rows = filteredRows
-        guard !rows.isEmpty else {
+        let ids = selectableIDs
+        guard !ids.isEmpty else {
             return
         }
-        let current = rows.firstIndex { $0.id == selectedID } ?? 0
-        let next = min(max(current + delta, 0), rows.count - 1)
-        selectedID = rows[next].id
+        let current = ids.firstIndex { $0 == selectedID } ?? 0
+        let next = min(max(current + delta, 0), ids.count - 1)
+        selectedID = ids[next]
     }
 
     @ViewBuilder

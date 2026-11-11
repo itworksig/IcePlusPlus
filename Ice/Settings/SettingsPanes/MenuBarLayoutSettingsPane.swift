@@ -131,7 +131,7 @@ struct MenuBarLayoutSettingsPane: View {
                         }
                         MenuBarCustomItemEditor(model: appState.menuBarCustomItems)
                         if #available(macOS 27, *) {
-                            Text("Drag an app into Hidden or Always Hidden. Ice++ hides that app when the section is collapsed, and the Ice Bar opens it. System icons stay in the menu bar.")
+                            Text("On this macOS, hiding applies to a whole app. Wi-Fi, Battery, Clock, and Control Center can be switched one by one. Bluetooth and volume stay in the menu bar. Icons from the same app stay together.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else if hiddenDividerX == nil, alwaysHiddenDividerX == nil {

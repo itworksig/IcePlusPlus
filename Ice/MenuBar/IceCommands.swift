@@ -13,10 +13,8 @@ enum IceCommands {
     private static var focusIDs = Set<String>()
     private static var revealIDs = Set<String>()
     private static var groupIDs = Set<String>()
-    private static var savedSystem: [String: Bool] = [:]
-    private static var menuBarWasVisible = true
 
-    static var focusActive: Bool { !focusIDs.isEmpty || !savedSystem.isEmpty }
+    static var focusActive: Bool { !focusIDs.isEmpty }
 
     static func toggleFocus() {
         if focusActive {
@@ -27,30 +25,13 @@ enum IceCommands {
     }
 
     static func beginFocus() {
-        guard let appState else {
+        guard appState != nil else {
             return
         }
-        menuBarWasVisible = NSMenu.menuBarVisible()
-        var saved: [String: Bool] = [:]
-        var changed = false
-        for item in SystemMenuExtra.allCases {
-            let shown = SystemMenuExtraStore.isShown(item)
-            saved[item.rawValue] = shown
-            if shown {
-                SystemMenuExtraStore.setShown(false, item, reload: false)
-                changed = true
-            }
-        }
-        if changed {
-            SystemMenuExtraStore.reloadIfChanged()
-        }
-        savedSystem = saved
         focusIDs = Set(
             NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier).filter(isConcealable)
         )
         pushConcealment()
-        NSMenu.setMenuBarVisible(false)
-        _ = appState
     }
 
     static func endFocus() {
@@ -59,19 +40,6 @@ enum IceCommands {
         }
         focusIDs = []
         pushConcealment()
-        var changed = false
-        for item in SystemMenuExtra.allCases {
-            let shown = savedSystem[item.rawValue] ?? true
-            if SystemMenuExtraStore.isShown(item) != shown {
-                SystemMenuExtraStore.setShown(shown, item, reload: false)
-                changed = true
-            }
-        }
-        savedSystem = [:]
-        if changed {
-            SystemMenuExtraStore.reloadIfChanged()
-        }
-        NSMenu.setMenuBarVisible(menuBarWasVisible)
     }
 
     static func setGroupMembers(_ bundleIDs: Set<String>) {

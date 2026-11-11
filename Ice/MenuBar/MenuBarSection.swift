@@ -79,14 +79,7 @@ final class MenuBarSection {
 
     /// The best screen to show the Ice Bar on.
     private weak var screenForIceBar: NSScreen? {
-        guard let appState else {
-            return nil
-        }
-        if appState.isActiveSpaceFullscreen {
-            return NSScreen.screenWithMouse ?? NSScreen.main
-        } else {
-            return NSScreen.main
-        }
+        NSScreen.screenWithMouse ?? NSScreen.main
     }
 
     /// A Boolean value that indicates whether the section is hidden.
@@ -348,7 +341,7 @@ final class MenuBarSection {
         rehideMonitor = UniversalEventMonitor(mask: .mouseMoved) { [weak self] event in
             guard
                 let self,
-                let screen = NSScreen.main
+                let screen = NSScreen.screenWithMouse ?? NSScreen.main
             else {
                 return event
             }
@@ -360,7 +353,7 @@ final class MenuBarSection {
                     ) { [weak self] _ in
                         guard
                             let self,
-                            let screen = NSScreen.main
+                            let screen = NSScreen.screenWithMouse ?? NSScreen.main
                         else {
                             return
                         }

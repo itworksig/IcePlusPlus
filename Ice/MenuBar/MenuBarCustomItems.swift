@@ -130,7 +130,8 @@ final class MenuBarCustomItems: NSObject, ObservableObject {
     private func menu(for item: MenuBarCustomItem) -> NSMenu {
         let menu = NSMenu()
         for bundleID in item.memberBundleIDs where !bundleID.isEmpty {
-            let entry = NSMenuItem(title: bundleID, action: #selector(StatusItemTarget.openMember(_:)), keyEquivalent: "")
+            let name = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.localizedName ?? bundleID
+            let entry = NSMenuItem(title: name, action: #selector(StatusItemTarget.openMember(_:)), keyEquivalent: "")
             entry.target = target
             entry.representedObject = ["id": item.id.uuidString, "bundle": bundleID]
             menu.addItem(entry)
@@ -201,7 +202,32 @@ struct MenuBarCustomItemEditor: View {
                 Slider(value: $width, in: 8...200, step: 4)
             }
             TextField("URL or script path", text: $actionValue)
-            TextField("Group bundle IDs, separated by commas", text: $members)
+            Text("A group is an Ice icon. Choosing an app brings that app back to the menu bar. macOS cannot merge another app's icon into this one.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Add app to group", selection: Binding(
+                get: { "" },
+                set: { bundleID in
+                    guard !bundleID.isEmpty else {
+                        return
+                    }
+                    var ids = members.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    if !ids.contains(bundleID) {
+                        ids.append(bundleID)
+                    }
+                    members = ids.joined(separator: ", ")
+                }
+            )) {
+                Text("Choose an app").tag("")
+                ForEach(runningApps, id: \.bundleID) { app in
+                    Text(app.name).tag(app.bundleID)
+                }
+            }
+            if !members.isEmpty {
+                Text(members)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Button("Add widget") { add(.widget) }
                 Button("Add group") { add(.group) }
@@ -219,6 +245,17 @@ struct MenuBarCustomItemEditor: View {
                 }
             }
         }
+    }
+
+    private var runningApps: [(name: String, bundleID: String)] {
+        var seen = Set<String>()
+        return NSWorkspace.shared.runningApplications.compactMap { app in
+            guard app.activationPolicy == .regular, let bundleID = app.bundleIdentifier, seen.insert(bundleID).inserted else {
+                return nil
+            }
+            return (app.localizedName ?? bundleID, bundleID)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func customKindTitle(_ kind: MenuBarCustomItem.Kind) -> LocalizedStringKey {

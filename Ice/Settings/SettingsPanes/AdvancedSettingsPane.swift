@@ -172,10 +172,11 @@ struct AdvancedSettingsPane: View {
 private struct MenuBarBehaviorSettings: View {
     @ObservedObject var behaviors: MenuBarBehaviors
     @State private var presetName = ""
+    @State private var bindDisplays = true
     @State private var frontmostBundle = ""
     @State private var batteryPercent = 20.0
-    @State private var startHour = 9.0
-    @State private var endHour = 18.0
+    @State private var startTime = Calendar.current.date(from: DateComponents(hour: 9, minute: 0)) ?? Date()
+    @State private var endTime = Calendar.current.date(from: DateComponents(hour: 18, minute: 0)) ?? Date()
     @State private var draftKind = MenuBarAutomation.Kind.frontmostApp
     @State private var draftAction = MenuBarAutomation.Action.showHidden
     @State private var showHidden = true
@@ -203,17 +204,26 @@ private struct MenuBarBehaviorSettings: View {
                 get: { behaviors.relieveNotch },
                 set: { behaviors.updateRelieveNotch($0) }
             ))
+            Text("Off unless you turn it on. Only a third-party icon whose center is under the notch is moved. The clock and Wi-Fi stay.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         IceSection("Presets") {
             TextField("Preset name", text: $presetName)
+            Toggle("Apply when these displays are connected", isOn: $bindDisplays)
             Button("Save current layout") {
-                behaviors.saveCurrentLayout(named: presetName)
+                behaviors.saveCurrentLayout(named: presetName, forCurrentDisplays: bindDisplays)
                 presetName = ""
             }
             .disabled(presetName.trimmingCharacters(in: .whitespaces).isEmpty)
             ForEach(behaviors.presets) { preset in
                 HStack {
                     Text(preset.name)
+                    if preset.displaySignature != nil {
+                        Text("This display setup")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button("Apply") { behaviors.apply(preset) }
                     Button("Delete") { behaviors.delete(preset) }
@@ -231,7 +241,12 @@ private struct MenuBarBehaviorSettings: View {
                 Text("Apply a preset").tag(MenuBarAutomation.Action.applyPreset)
             }
             if draftKind == .frontmostApp {
-                TextField("Frontmost app bundle ID", text: $frontmostBundle)
+                Picker("Frontmost app", selection: $frontmostBundle) {
+                    Text("Choose an app").tag("")
+                    ForEach(runningApps, id: \.bundleID) { app in
+                        Text(app.name).tag(app.bundleID)
+                    }
+                }
             }
             if draftKind == .batteryBelow {
                 Slider(value: $batteryPercent, in: 5...90, step: 5) {
@@ -239,21 +254,33 @@ private struct MenuBarBehaviorSettings: View {
                 }
             }
             if draftKind == .schedule {
-                HStack {
-                    Text("From")
-                    TextField("Start", value: $startHour, format: .number)
-                        .frame(width: 48)
-                    Text("to")
-                    TextField("End", value: $endHour, format: .number)
-                        .frame(width: 48)
-                }
+                DatePicker("From", selection: $startTime, displayedComponents: .hourAndMinute)
+                DatePicker("To", selection: $endTime, displayedComponents: .hourAndMinute)
             }
             if draftKind == .wifi {
-                TextField("Wi-Fi name", text: $wifiName)
+                HStack {
+                    Text(wifiName.isEmpty ? String(localized: "Current network") : wifiName)
+                    Spacer()
+                    Button("Use current network") {
+                        wifiName = behaviors.currentNetworkName() ?? ""
+                    }
+                }
             }
             if draftKind == .location {
-                TextField("Latitude", value: $latitude, format: .number)
-                TextField("Longitude", value: $longitude, format: .number)
+                HStack {
+                    Text(locationSummary)
+                    Spacer()
+                    Button("Use current location") {
+                        behaviors.useCurrentLocation()
+                    }
+                }
+                .onChange(of: behaviors.capturedPlace) { _, place in
+                    guard let place else {
+                        return
+                    }
+                    latitude = place.latitude
+                    longitude = place.longitude
+                }
                 TextField("Radius in meters", value: $radius, format: .number)
             }
             if draftKind == .date {
@@ -262,7 +289,19 @@ private struct MenuBarBehaviorSettings: View {
                 TextField("Weekdays, Sunday = 1", text: $weekdays)
             }
             if draftKind == .script {
-                TextField("Script path", text: $scriptPath)
+                HStack {
+                    Text(scriptPath.isEmpty ? String(localized: "No script chosen") : scriptPath)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Choose script") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK {
+                            scriptPath = panel.url?.path ?? ""
+                        }
+                    }
+                }
             }
             if draftAction == .showHidden {
                 Toggle("Show the hidden section", isOn: $showHidden)
@@ -305,8 +344,8 @@ private struct MenuBarBehaviorSettings: View {
             kind: draftKind,
             bundleID: frontmostBundle.trimmingCharacters(in: .whitespaces),
             batteryPercent: Int(batteryPercent),
-            startHour: Int(startHour),
-            endHour: Int(endHour),
+            startHour: Calendar.current.component(.hour, from: startTime),
+            endHour: Calendar.current.component(.hour, from: endTime),
             showHidden: showHidden,
             action: draftAction,
             presetID: presetID,
@@ -317,8 +356,28 @@ private struct MenuBarBehaviorSettings: View {
             month: month,
             day: day,
             weekdays: weekdays.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) },
-            scriptPath: scriptPath.trimmingCharacters(in: .whitespaces)
+            scriptPath: scriptPath.trimmingCharacters(in: .whitespaces),
+            startMinute: Calendar.current.component(.minute, from: startTime),
+            endMinute: Calendar.current.component(.minute, from: endTime)
         )
+    }
+
+    private var runningApps: [(name: String, bundleID: String)] {
+        var seen = Set<String>()
+        return NSWorkspace.shared.runningApplications.compactMap { app in
+            guard app.activationPolicy == .regular, let bundleID = app.bundleIdentifier, seen.insert(bundleID).inserted else {
+                return nil
+            }
+            return (app.localizedName ?? bundleID, bundleID)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var locationSummary: String {
+        if latitude == 0, longitude == 0 {
+            return String(localized: "Current location")
+        }
+        return String(format: "%.4f, %.4f", latitude, longitude)
     }
 
     private func kindTitle(_ kind: MenuBarAutomation.Kind) -> LocalizedStringKey {
@@ -342,7 +401,7 @@ private struct MenuBarBehaviorSettings: View {
         case .batteryBelow:
             Text("Battery ≤ \(rule.batteryPercent)%")
         case .schedule:
-            Text("\(rule.startHour):00–\(rule.endHour):00")
+            Text(String(format: "%d:%02d–%d:%02d", rule.startHour, rule.startMinute, rule.endHour, rule.endMinute))
         case .wifi:
             Text(rule.wifiName)
         case .location:

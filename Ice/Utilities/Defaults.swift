@@ -187,6 +187,7 @@ extension Defaults {
         case menuBarPresets = "MenuBarPresets"
         case menuBarAutomations = "MenuBarAutomations"
         case relieveNotch = "RelieveNotch"
+        case relieveNotchUserSet = "RelieveNotchUserSet"
         case hideShownWhenRevealing = "HideShownWhenRevealing"
         case menuBarCustomItems = "MenuBarCustomItems"
         case showMenuBarItemImages = "ShowMenuBarItemImages"

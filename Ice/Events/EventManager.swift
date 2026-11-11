@@ -535,14 +535,7 @@ extension EventManager {
 extension EventManager {
     /// Returns the best screen to use for event manager calculations.
     var bestScreen: NSScreen? {
-        guard let appState else {
-            return nil
-        }
-        if appState.isActiveSpaceFullscreen {
-            return NSScreen.screenWithMouse ?? NSScreen.main
-        } else {
-            return NSScreen.main
-        }
+        NSScreen.screenWithMouse ?? NSScreen.main
     }
 
     /// A Boolean value that indicates whether the mouse pointer is within

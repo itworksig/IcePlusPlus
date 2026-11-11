@@ -1,0 +1,36 @@
+name: Retry a release that never got a runner
+
+# A Mac hosted job that is cancelled before it starts never runs its own
+# steps, so the retry has to live in a separate workflow. This only
+# re-queues that case, and it stops after the third attempt.
+on:
+  workflow_run:
+    workflows: ["Release Apple silicon"]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+
+jobs:
+  retry:
+    if: >-
+      (github.event.workflow_run.conclusion == 'cancelled' ||
+       github.event.workflow_run.conclusion == 'failure') &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Queue the release again when no Mac runner was acquired
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          waiting=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --jq '[.jobs[] | select(.conclusion == "cancelled" and ((.steps | length) == 0))] | length')
+          if [ "$waiting" = "0" ]; then
+            echo "The release ran steps, so this was not a missing runner."
+            exit 0
+          fi
+          gh run rerun "$RUN_ID" --failed

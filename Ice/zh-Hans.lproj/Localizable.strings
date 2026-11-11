@@ -317,3 +317,17 @@
 "Show the Ice Bar at the mouse" = "在鼠标位置显示 Ice Bar";
 "Focus mode" = "专注模式";
 "Search" = "搜索";
+"Apply when these displays are connected" = "接上这组显示器时自动套用";
+"This display setup" = "当前显示器";
+"Choose an app" = "选择应用";
+"To" = "到";
+"Current network" = "当前网络";
+"Use current network" = "使用当前网络";
+"Use current location" = "使用当前位置";
+"No script chosen" = "未选择脚本";
+"Choose script" = "选择脚本";
+"Add app to group" = "把应用加入分组";
+"A group is an Ice icon. Choosing an app brings that app back to the menu bar. macOS cannot merge another app's icon into this one." = "分组是 Ice 自己的一个图标。点选某个应用后，它会回到菜单栏。系统不能把别人的图标合成到这个菜单项里。";
+"On this macOS, hiding applies to a whole app. Wi-Fi, Battery, Clock, and Control Center can be switched one by one. Bluetooth and volume stay in the menu bar. Icons from the same app stay together." = "在这个 macOS 上，隐藏是按整个应用生效的。Wi-Fi、电池、时钟和控制中心可以单独开关。蓝牙和音量留在菜单栏里。同一个应用的图标会一起移动。";
+"Off unless you turn it on. Only a third-party icon whose center is under the notch is moved. The clock and Wi-Fi stay." = "默认关闭。只有中心点确实在刘海下面的第三方图标会被挪走。时钟和 Wi-Fi 保持显示。";
+"Automation" = "自动化";

@@ -186,7 +186,7 @@ final class MenuBarManager: ObservableObject {
                 }
 
                 if sections.contains(where: { $0.controlItem.state == .showItems }) {
-                    guard let screen = NSScreen.main else {
+                    guard let screen = NSScreen.screenWithMouse ?? NSScreen.main else {
                         return
                     }
 

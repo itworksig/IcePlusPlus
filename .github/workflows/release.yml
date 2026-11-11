@@ -1,6 +1,6 @@
 name: Release Apple silicon
 
-# A push to main raises the patch version (27.0.1 -> 27.0.2), builds an
+# A push to main publishes the next version and builds an
 # arm64 Ice.app, and publishes Ice.zip plus Ice-arm64.dmg. The app compares
 # its version with
 # https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest
@@ -102,8 +102,20 @@ jobs:
             exit 1
           fi
 
-          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
-          VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          # A higher major or minor written in the project is the version to
+          # publish. A later push on the same major.minor still raises the patch.
+          IFS=. read -r FMAJOR FMINOR FPATCH <<< "$FILE_VERSION"
+          if [ -n "${REL:-}" ]; then
+            IFS=. read -r RMAJOR RMINOR RPATCH <<< "$REL"
+          else
+            RMAJOR=0 RMINOR=0 RPATCH=0
+          fi
+          if [ "$FMAJOR" -gt "$RMAJOR" ] || { [ "$FMAJOR" -eq "$RMAJOR" ] && [ "$FMINOR" -gt "$RMINOR" ]; }; then
+            VERSION="$FILE_VERSION"
+          else
+            IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
           # Sparkle requires the build number to keep increasing and it must
           # stay above 1117 (the last build released upstream).
           BUILD_NUMBER=$((1117 + GITHUB_RUN_NUMBER))
