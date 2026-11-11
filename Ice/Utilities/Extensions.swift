@@ -20,9 +20,8 @@ extension Bundle {
 
     /// The icon file in this bundle.
     ///
-    /// `NSImage.applicationIconName` is cached by bundle id. A trashed copy of
-    /// Ice still owns `com.jordanbaird.Ice`, so that cache keeps serving the
-    /// original cube.
+    /// `NSImage.applicationIconName` is cached by bundle identifier, so the
+    /// icon is read from `AppIcon.icns` inside this bundle.
     var appIconImage: NSImage? {
         if let url = url(forResource: "AppIcon", withExtension: "icns"),
            let image = NSImage(contentsOf: url) {

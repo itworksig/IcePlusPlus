@@ -12,7 +12,7 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20arm64-blue?style=flat-square)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 
-显示名称为 **Ice++**。软件包标识符仍为 `com.jordanbaird.Ice`，偏好设置亦写入该标识。因此，本构建可替换已安装的 Ice。
+显示名称为 **Ice++**。软件包标识符为 `com.itworksig.iceplusplus`，偏好设置写入该标识。该标识与 `com.jordanbaird.Ice` 相互独立。首次启动时，若旧标识下存在偏好设置，则复制到新标识。辅助功能与屏幕录制授权不会随之转移。仍使用旧标识的构建无法通过「检查更新」安装本软件包，因其要求包内标识符与自身一致。请先手动安装一次磁盘映像。此后的更新要求标识符为 `com.itworksig.iceplusplus`。
 
 ## 概述
 
@@ -34,7 +34,7 @@ macOS 27 上的隐藏通过系统评估模式的允许列表实现。逐图标�
 
 | | 原始 Ice | cavaldos/Ice | Ice++ |
 | --- | --- | --- | --- |
-| 产品名称 | Ice | Ice | Ice++。软件包标识符 `com.jordanbaird.Ice` |
+| 产品名称 | Ice | Ice | Ice++。软件包标识符 `com.itworksig.iceplusplus` |
 | 界面语言 | 英文 | 英文 | 英文与简体中文。切换语言将重新启动应用 |
 | 更新 | Sparkle appcast | 项目 Release，另提供 Homebrew tap `cavaldos/tap` | 关于页查询本仓库的 GitHub Release。未发布 Homebrew formula |
 | 分发 | 原始仓库 | cavaldos/Ice | 仅 arm64。推送至 `main` 即发布下一版本。项目中更高的主版本或次版本按所记录的版本发布 |
@@ -88,7 +88,7 @@ xattr -d com.apple.quarantine /Applications/Ice.app
 2. 请求 `https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest`。未认证流量每小时共享 60 次额度。若返回 HTTP 403 或 429，则跟随 `https://github.com/itworksig/IcePlusPlus/releases/latest` 至其解析后的标签，并下载 `Ice.zip`。
 3. 将标签 `vX.Y.Z` 与本地版本按数值比较。前缀 `v` 及 `-beta` 一类后缀不参与比较。`1.0` 与 `1.0.0` 视为相等。
 4. 远程版本较高即为可用更新。相等或较低表示当前安装已是最新。Release 列表为空时，报告为尚无已发布版本。
-5. 「安装并重新打开」下载 `Ice.zip`；若无 zip，则使用 `Ice-arm64.dmg`。包内应用的标识符须为 `com.jordanbaird.Ice`，版本须更高，且架构须为 arm64。随后替换正在运行的副本并重新启动。
+5. 「安装并重新打开」下载 `Ice.zip`；若无 zip，则使用 `Ice-arm64.dmg`。包内应用的标识符须为 `com.itworksig.iceplusplus`，版本须更高，且架构须为 arm64。随后替换正在运行的副本并重新启动。
 
 启用自动检查后，Ice++ 在启动时查询一次，此后约每 24 小时查询一次。已安装版本为最新时不显示对话框。启用自动下载后，先下载较新的构建，经确认后再执行安装。
 

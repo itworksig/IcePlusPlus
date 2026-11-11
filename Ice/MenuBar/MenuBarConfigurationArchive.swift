@@ -7,7 +7,7 @@ import Cocoa
 
 enum MenuBarConfigurationArchive {
     private static var domain: String {
-        Bundle.main.bundleIdentifier ?? "com.jordanbaird.Ice"
+        Bundle.main.bundleIdentifier ?? "com.itworksig.iceplusplus"
     }
 
     static func backupIfStale() {

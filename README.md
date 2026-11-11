@@ -12,7 +12,7 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20arm64-blue?style=flat-square)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 
-**Ice++** is the display name. The bundle identifier remains `com.jordanbaird.Ice`, and preferences are stored under that identifier. An existing Ice installation can therefore be replaced by this build.
+**Ice++** is the display name. The bundle identifier is `com.itworksig.iceplusplus`, and preferences are stored under that identifier. The identifier is separate from `com.jordanbaird.Ice`. On the first launch, preferences are copied from the former domain when it exists. Accessibility and Screen Recording grants are not transferred. A build that still uses the former identifier cannot install this package through Check for Updates, because it requires the payload identifier to match its own. Install the disk image once. Later updates then require `com.itworksig.iceplusplus`.
 
 ## Overview
 
@@ -34,7 +34,7 @@ Subsequent cavaldos commits, covering Ice Bar item discovery, exclusion of hover
 
 | | Original Ice | cavaldos/Ice | Ice++ |
 | --- | --- | --- | --- |
-| Product name | Ice | Ice | Ice++. Bundle identifier `com.jordanbaird.Ice` |
+| Product name | Ice | Ice | Ice++. Bundle identifier `com.itworksig.iceplusplus` |
 | Interface language | English | English | English and Simplified Chinese. A language change relaunches the application |
 | Updates | Sparkle appcast | Project releases, plus the Homebrew tap `cavaldos/tap` | The About page queries GitHub Releases for this repository. No Homebrew formula is published |
 | Distribution | Original repository | cavaldos/Ice | arm64 only. A push to `main` publishes the next version. A higher major or minor recorded in the project is published verbatim |
@@ -88,7 +88,7 @@ Check for Updates on the About page reads the latest Release of this repository.
 2. The client requests `https://api.github.com/repos/itworksig/IcePlusPlus/releases/latest`. Unauthenticated traffic shares a limit of 60 requests per hour. On HTTP 403 or 429, the client follows `https://github.com/itworksig/IcePlusPlus/releases/latest` to the resolved tag and downloads `Ice.zip`.
 3. The tag `vX.Y.Z` is compared with the local version numerically. A leading `v` and a suffix such as `-beta` are excluded. `1.0` and `1.0.0` compare equal.
 4. A greater remote version is an update. An equal or lower version indicates that the installed copy is current. An empty release list is reported as no published version.
-5. Install and Reopen downloads `Ice.zip`, or `Ice-arm64.dmg` when the zip is absent. The payload must identify as `com.jordanbaird.Ice`, carry a higher version, and be arm64. The running copy is then replaced and relaunched.
+5. Install and Reopen downloads `Ice.zip`, or `Ice-arm64.dmg` when the zip is absent. The payload must identify as `com.itworksig.iceplusplus`, carry a higher version, and be arm64. The running copy is then replaced and relaunched.
 
 When automatic checks are enabled, Ice++ queries once at launch and approximately every 24 hours thereafter. No dialog is presented when the installed version is current. When automatic download is enabled, a newer build is downloaded first, and installation proceeds only after confirmation.
 

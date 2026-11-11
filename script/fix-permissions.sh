@@ -10,7 +10,7 @@
 set -e
 
 APP="${1:-/Applications/Ice.app}"
-BUNDLE_ID="com.jordanbaird.Ice"
+BUNDLE_ID="com.itworksig.iceplusplus"
 
 if [[ ! -d "$APP" ]]; then
   echo "not found: $APP"

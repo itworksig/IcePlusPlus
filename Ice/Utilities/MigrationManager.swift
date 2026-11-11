@@ -15,6 +15,27 @@ struct MigrationManager {
 // MARK: - Migrate All
 
 extension MigrationManager {
+    /// Copies preferences from `com.jordanbaird.Ice` the first time this
+    /// identifier is launched. Accessibility and Screen Recording grants
+    /// remain with the previous identifier.
+    nonisolated static func copyPreviousDomainIfNeeded() {
+        let previous = "com.jordanbaird.Ice"
+        let current = "com.itworksig.iceplusplus"
+        guard Bundle.main.bundleIdentifier == current else {
+            return
+        }
+        let defaults = UserDefaults.standard
+        if let existing = defaults.persistentDomain(forName: current), !existing.isEmpty {
+            return
+        }
+        guard let old = defaults.persistentDomain(forName: previous), !old.isEmpty else {
+            return
+        }
+        defaults.setPersistentDomain(old, forName: current)
+    }
+}
+
+extension MigrationManager {
     /// Performs all migrations.
     static func migrateAll(appState: AppState) {
         let manager = MigrationManager(appState: appState)
