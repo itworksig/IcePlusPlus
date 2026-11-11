@@ -2,8 +2,6 @@
 
 Thanks for your interest in contributing to Ice! This guide covers the minimum you need to get running and get a PR merged.
 
-Please also read [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md). By participating, you agree to follow it.
-
 ## Requirements
 
 - macOS 14+ (project relies on macOS 14 system APIs)
