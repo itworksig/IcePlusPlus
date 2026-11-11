@@ -24,7 +24,7 @@ Install SwiftLint first if needed: `brew install swiftlint`.
 ./script/fix-permissions.sh [/path/to/Ice.app]
 ```
 
-Ad-hoc signed builds are pinned to a `cdhash` that changes with every build, so the grant recorded for the previous binary stops matching — System Settings shows the toggle on while the app is denied. See [Permissions](../README.md#permissions).
+Ad-hoc signed builds are pinned to a `cdhash` that changes with every build, so the grant recorded for the previous binary stops matching — System Settings shows the toggle on while the app is denied. See [Install](../README.md#install).
 
 ## Every release
 
