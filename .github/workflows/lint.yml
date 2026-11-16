@@ -14,9 +14,9 @@ on:
 jobs:
   swiftlint:
     if: '!github.event.pull_request.merged'
-    # 0.65.1's Linux binary targets Ubuntu 22.04. ubuntu-latest no longer
-    # runs it, so the install step failed before any file was linted.
-    runs-on: ubuntu-22.04
+    # The 0.65.1 Linux binary requires GLIBC_2.38 and GLIBCXX_3.4.32.
+    # Ubuntu 22.04 cannot start it; pin the compatible 24.04 image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: swift-actions/setup-swift@v2
