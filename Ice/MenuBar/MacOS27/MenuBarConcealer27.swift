@@ -44,6 +44,33 @@ final class MenuBarConcealer27 {
     private var extraConcealment = Set<String>()
     private var temporaryShowGeneration = [String: Int]()
     private var isReleased = false
+    private var isSuspendedForNotificationCenter = false
+
+    /// Keep system notification UI usable while retaining the saved layout.
+    func suspendForNotificationCenter() -> Bool {
+        guard !isReleased, !isSuspendedForNotificationCenter,
+              liveToken != nil || !desiredConcealSet().isEmpty else { return false }
+        isSuspendedForNotificationCenter = true
+        if let liveToken {
+            backend.invalidate(liveToken)
+            self.liveToken = nil
+        }
+        applied = []
+        appliedAllow = []
+        logger.info("Suspended menu bar concealment for Notification Center")
+        return true
+    }
+
+    func resumeAfterNotificationCenter() {
+        guard isSuspendedForNotificationCenter else { return }
+        isSuspendedForNotificationCenter = false
+        logger.info("Resuming menu bar concealment after Notification Center")
+        if !isReleased { update() }
+    }
+
+    func waitForPendingChanges() async {
+        await applyChain?.value
+    }
 
     /// The section recorded for an app. Apps with no entry are visible.
     func sectionKind(for bundleID: String) -> MenuBarItemAXDiscovery.SectionKind {
@@ -179,11 +206,11 @@ final class MenuBarConcealer27 {
 
     /// Recomputes the hidden set from the layout and the section toggles.
     func update() {
-        let conceal = desiredConcealSet()
         let previous = applyChain
         applyChain = Task { [weak self] in
             await previous?.value
-            await self?.apply(conceal)
+            guard let self else { return }
+            await apply(desiredConcealSet())
         }
     }
 
@@ -243,7 +270,7 @@ final class MenuBarConcealer27 {
     }
 
     private func apply(_ conceal: Set<String>) async {
-        guard !isReleased else {
+        guard !isReleased, !isSuspendedForNotificationCenter else {
             return
         }
         if conceal.isEmpty {
@@ -264,7 +291,7 @@ final class MenuBarConcealer27 {
         }
         do {
             let token = try await backend.activate(allowedBundleIDs: allowList)
-            guard !isReleased else {
+            guard !isReleased, !isSuspendedForNotificationCenter else {
                 backend.invalidate(token)
                 return
             }

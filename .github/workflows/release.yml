@@ -122,6 +122,8 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           echo "Publishing version $VERSION ($BUILD_NUMBER), previous was $BASE"
+      - name: Test menu bar assertion lifecycle
+        run: bash script/test-menu-bar-concealer.sh
       - name: Build app
         run: |
           set -euo pipefail

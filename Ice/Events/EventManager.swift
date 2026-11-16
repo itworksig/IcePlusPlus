@@ -18,6 +18,7 @@ final class EventManager {
 
     /// Trailing clock and Control Center band, so a click there is not empty space.
     private var cachedSystemExtra: (display: CGDirectDisplayID, frame: CGRect, date: Date)?
+    private let notificationCenterAccess = NotificationCenterAccess27()
 
     /// Cached menu bar window frames per display.
     ///
@@ -190,6 +191,7 @@ final class EventManager {
 
     /// Stops all monitors.
     func stopAll() {
+        notificationCenterAccess.stop()
         for monitor in allMonitors {
             monitor.stop()
         }
@@ -205,6 +207,11 @@ extension EventManager {
     private func handleShowOnClick() {
         guard let appState else {
             return
+        }
+        if #available(macOS 27, *),
+           NSEvent.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]),
+           let point = MouseCursor.locationCoreGraphics {
+            notificationCenterAccess.handleClick(at: point, concealer: appState.menuBarConcealer)
         }
         // The clock and Control Center sit past the status icons. On macOS 27
         // a click there used to look like empty menu bar, so the Ice Bar

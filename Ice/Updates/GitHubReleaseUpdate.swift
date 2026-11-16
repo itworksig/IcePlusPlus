@@ -350,7 +350,9 @@ enum GitHubUpdates {
         guard (200..<300).contains(http.statusCode) else {
             throw UpdateFailure.badResponse(http.statusCode)
         }
-        let html = String(decoding: data, as: UTF8.self)
+        guard let html = String(bytes: data, encoding: .utf8) else {
+            throw UpdateFailure.noRelease
+        }
         guard let tag = firstPrereleaseTag(in: html),
               let release = GitHubRelease.standardDownloads(tag: tag, prerelease: true)
         else {
@@ -625,9 +627,9 @@ enum GitHubUpdates {
         #!/bin/bash
         # Copies a downloaded Ice.app over the running copy after that process exits.
         if [ -z "${ICE_UPDATE_DAEMON:-}" ]; then
-          export ICE_UPDATE_DAEMON=1
-          /bin/bash "$0" "$@" >>/tmp/ice-plusplus-update.log 2>&1 &
-          exit 0
+            export ICE_UPDATE_DAEMON=1
+            /bin/bash "$0" "$@" >>/tmp/ice-plusplus-update.log 2>&1 &
+            exit 0
         fi
         trap '' HUP
         set -u
@@ -638,15 +640,15 @@ enum GitHubUpdates {
         LAUNCH="${5:-1}"
         i=0
         while [ "$i" -lt 150 ]; do
-          if ! kill -0 "$PID" 2>/dev/null; then
-            break
-          fi
-          sleep 0.2
-          i=$((i + 1))
+            if ! kill -0 "$PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.2
+            i=$((i + 1))
         done
         if kill -0 "$PID" 2>/dev/null; then
-          echo "timed out waiting for $PID"
-          exit 1
+            echo "timed out waiting for $PID"
+            exit 1
         fi
         set -e
         # Copy aside first. The running app is already gone, so a failed
@@ -658,10 +660,10 @@ enum GitHubUpdates {
         mv "$NEXT" "$DEST"
         set +e
         if [ -n "$ENT" ] && security find-identity -p codesigning -v 2>/dev/null | grep -F '"Ice Dev"' >/dev/null; then
-          codesign --force --sign "Ice Dev" --timestamp=none --options runtime --entitlements "$ENT" "$DEST" || echo "codesign failed"
+            codesign --force --sign "Ice Dev" --timestamp=none --options runtime --entitlements "$ENT" "$DEST" || echo "codesign failed"
         fi
         if [ "$LAUNCH" = "1" ]; then
-          open "$DEST"
+            open "$DEST"
         fi
         rm -rf "$(dirname "$SRC")"
         """
@@ -724,10 +726,12 @@ enum ReleaseVersionTests {
         precondition(release.tagName == "v27.0.2")
         precondition(GitHubUpdates.preferredAsset(in: release)?.name == "Ice.zip")
 
-        let made = GitHubRelease.standardDownloads(tag: "v27.0.2")
-        precondition(made?.tagName == "v27.0.2")
+        guard let made = GitHubRelease.standardDownloads(tag: "v27.0.2") else {
+            preconditionFailure("Expected a standard release")
+        }
+        precondition(made.tagName == "v27.0.2")
         precondition(
-            GitHubUpdates.preferredAsset(in: made!)?.browserDownloadURL.absoluteString
+            GitHubUpdates.preferredAsset(in: made)?.browserDownloadURL.absoluteString
                 == "https://github.com/itworksig/IcePlusPlus/releases/download/v27.0.2/Ice.zip"
         )
         precondition(GitHubRelease.standardDownloads(tag: "nope") == nil)

@@ -70,7 +70,7 @@ struct IceShortcuts: AppShortcutsProvider {
             intent: ToggleFocusModeIntent(),
             phrases: [
                 "Toggle focus mode in \(.applicationName)",
-                "Hide the menu bar with \(.applicationName)"
+                "Hide the menu bar with \(.applicationName)",
             ],
             shortTitle: "Focus Mode",
             systemImageName: "rectangle.topthird.inset.filled"

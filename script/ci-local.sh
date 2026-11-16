@@ -4,6 +4,8 @@
 set -e
 cd "$(dirname "$0")/.."
 
+bash script/test-menu-bar-concealer.sh
+
 if ! command -v swiftlint >/dev/null; then
   echo "swiftlint not found — run: brew install swiftlint"
   exit 1
