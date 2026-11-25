@@ -20,3 +20,15 @@ the assessment backend's other macOS limitations.
 
 For local updates, retain the installed bundle ID, path, signing certificate and
 entitlements. Never reset TCC as part of these checks.
+
+## macOS 27 divider spacing
+
+With both sections enabled and collapsed, the hidden and always-hidden dividers
+must have no menu bar slot. Check again after opening and closing Notification
+Center, switching input sources, and switching Spaces: system relayout must not
+restore padding for an invisible divider. The Ice icon and section hotkeys must
+still reveal their sections. With section dividers enabled, revealing a section
+should attach its chevron; collapsing it should remove that slot again. Disabling
+the always-hidden section must also disable its hotkey, even if its divider was
+already detached. Re-enabling it must restore section behavior without a blank
+slot. Older macOS versions retain the physical-divider implementation.

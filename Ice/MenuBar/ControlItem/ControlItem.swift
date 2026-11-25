@@ -67,6 +67,17 @@ final class ControlItem {
     /// The control item's identifier.
     private let identifier: Identifier
 
+    /// macOS 27 uses saved app assignments instead of physical dividers.
+    /// Keep section availability independent of whether its glyph is attached.
+    private var dividerIsEnabled = true
+
+    private var usesDetachedDivider: Bool {
+        if #available(macOS 27, *) {
+            return isSectionDivider
+        }
+        return false
+    }
+
     /// Storage for internal observers.
     private var cancellables = Set<AnyCancellable>()
 
@@ -96,10 +107,10 @@ final class ControlItem {
         identifier != .iceIcon
     }
 
-    /// A Boolean value that indicates whether the control item is currently
-    /// displayed in the menu bar.
+    /// Whether the control is enabled. On macOS 27 a divider can be enabled
+    /// without occupying a menu bar slot when its glyph is hidden.
     var isAddedToMenuBar: Bool {
-        statusItem.isVisible
+        usesDetachedDivider ? dividerIsEnabled : statusItem.isVisible
     }
 
     /// Creates a control item with the given identifier and app state.
@@ -179,6 +190,13 @@ final class ControlItem {
                 else {
                     return
                 }
+                if usesDetachedDivider {
+                    // Zero-length items still acquire system padding after
+                    // MenuBarAgent rebuilds its layout. Remove the empty slot.
+                    statusItem.length = Lengths.standard
+                    setStatusItemAttached(dividerIsEnabled && isVisible)
+                    return
+                }
                 if isVisible {
                     statusItem.length = switch section.name {
                     case .visible: Lengths.standard
@@ -204,38 +222,15 @@ final class ControlItem {
         constraint?.publisher(for: \.isActive)
             .removeDuplicates()
             .sink { [weak self] isActive in
-                self?.isVisible = isActive
+                guard let self, !usesDetachedDivider else { return }
+                isVisible = isActive
             }
             .store(in: &c)
 
         statusItem.publisher(for: \.isVisible)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isVisible in
-                guard
-                    let self,
-                    let appState,
-                    let section
-                else {
-                    return
-                }
-
-                let manager = appState.settingsManager.hotkeySettingsManager
-
-                let hotkey: Hotkey? = switch section.name {
-                case .visible: nil
-                case .hidden: manager.hotkey(withAction: .toggleHiddenSection)
-                case .alwaysHidden: manager.hotkey(withAction: .toggleAlwaysHiddenSection)
-                }
-
-                guard let hotkey else {
-                    return
-                }
-
-                if isVisible {
-                    hotkey.enable()
-                } else {
-                    hotkey.disable()
-                }
+            .sink { [weak self] _ in
+                self?.updateHotkeyAvailability()
             }
             .store(in: &c)
 
@@ -327,9 +322,8 @@ final class ControlItem {
                     else {
                         return
                     }
-                    // ponytail: the divider collapses to a 1pt sliver instead of
-                    // disappearing, so it stays in the bar as the section
-                    // boundary (AX lookup still finds it) without holding a slot.
+                    // Older systems retain a physical section boundary.
+                    // macOS 27 detaches invisible dividers instead.
                     isVisible = shouldShow
                 }
                 .store(in: &c)
@@ -429,8 +423,8 @@ final class ControlItem {
             case .hideItems:
                 if #available(macOS 27, *) {
                     // Concealment hides the apps. A chevron here is only an
-                    // extra arrow, so the divider stays in the bar at length 0
-                    // and draws nothing.
+                    // extra arrow, so detach its slot while retaining the
+                    // section's enabled state.
                     isVisible = false
                     button.cell?.isEnabled = false
                     button.image = nil
@@ -633,7 +627,13 @@ final class ControlItem {
         guard !isAddedToMenuBar else {
             return
         }
-        statusItem.isVisible = true
+        if usesDetachedDivider {
+            dividerIsEnabled = true
+            setStatusItemAttached(isVisible)
+            updateHotkeyAvailability()
+        } else {
+            statusItem.isVisible = true
+        }
     }
 
     /// Removes the control item from the menu bar.
@@ -641,11 +641,35 @@ final class ControlItem {
         guard isAddedToMenuBar else {
             return
         }
+        if usesDetachedDivider {
+            dividerIsEnabled = false
+        }
+        setStatusItemAttached(false)
+        updateHotkeyAvailability()
+    }
+
+    private func updateHotkeyAvailability() {
+        guard let appState, let section else { return }
+        let manager = appState.settingsManager.hotkeySettingsManager
+        let hotkey: Hotkey? = switch section.name {
+        case .visible: nil
+        case .hidden: manager.hotkey(withAction: .toggleHiddenSection)
+        case .alwaysHidden: manager.hotkey(withAction: .toggleAlwaysHiddenSection)
+        }
+        if isAddedToMenuBar {
+            hotkey?.enable()
+        } else {
+            hotkey?.disable()
+        }
+    }
+
+    private func setStatusItemAttached(_ attached: Bool) {
+        guard statusItem.isVisible != attached else { return }
         // Setting `statusItem.isVisible` to `false` has the unwanted side
         // effect of deleting the preferredPosition. Cache and restore it.
         let autosaveName = statusItem.autosaveName as String
         let cached = StatusItemDefaults[.preferredPosition, autosaveName]
-        statusItem.isVisible = false
+        statusItem.isVisible = attached
         StatusItemDefaults[.preferredPosition, autosaveName] = cached
     }
 }
